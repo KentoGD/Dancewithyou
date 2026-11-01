@@ -81,7 +81,7 @@
 
     <div class="game-card">
       <h2>🖐 Rompe Muñecos</h2>
-      <small>Toca con la mano los muñecos que caen para romperlos.</small>
+      <small>Mano abierta: rompes los muñecos que caen. Puño cerrado: ¡rebotan!</small>
       <button class="btn-start" data-game="dolls">Jugar</button>
     </div>
 
@@ -301,7 +301,11 @@
     for (const [a, b] of BONES) pts.push({ x: (lm[a].x + lm[b].x) / 2, y: (lm[a].y + lm[b].y) / 2 });
     const palm = [0, 5, 9, 13, 17].reduce((s, i) => ({ x: s.x + lm[i].x / 5, y: s.y + lm[i].y / 5 }), { x: 0, y: 0 });
     pts.push(palm);
-    return { lm, pts, size: dist(lm[0], lm[9]) };
+    // puño: las puntas de 3 de los 4 dedos están más cerca de la muñeca que sus articulaciones medias
+    let curled = 0;
+    for (const [t, j] of [[8, 6], [12, 10], [16, 14], [20, 18]]) if (dist(lm[t], lm[0]) < dist(lm[j], lm[0])) curled++;
+    const fist = curled >= (prevHand && prevHand.fist ? 2 : 3);   // histéresis para que no parpadee
+    return { lm, pts, size: dist(lm[0], lm[9]), fist };
   }
 
   function detectHands() {
@@ -351,7 +355,7 @@
       x: 50 + Math.random() * (W - 100), y: -80,
       vx: (Math.random() - 0.5) * 1.6, vy: 1.8 + Math.random() * 1.8,
       rot: (Math.random() - 0.5) * 0.6, vr: (Math.random() - 0.5) * 0.03,
-      s, hue: Math.floor(Math.random() * 360), t: Math.random() * 6
+      s, hue: Math.floor(Math.random() * 360), t: Math.random() * 6, cool: 0, bounced: false
     });
   }
   function dollCircles(d) {
@@ -388,25 +392,45 @@
     t = Math.max(0, Math.min(1, t));
     return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   }
-  function isHit(d) {
+  // devuelve {kind:'break'} (mano abierta / dedo / movimiento), {kind:'bounce',...} (puño) o null
+  function hitInfo(d) {
     const circles = dollCircles(d);
     const extra = +sensEl.value;
+    let bounce = null;
     if (mode === 'hands') {
       for (let h = 0; h < hands.length; h++) {
         const hand = hands[h], prev = prevHands[h] || hand;
         const cr = Math.max(8, Math.min(34, hand.size * 0.14)) + extra;
         for (let i = 0; i < hand.pts.length; i++) {
           const a = hand.pts[i], b = (prev.pts && prev.pts[i]) || a;
-          for (const c of circles) if (distPointSeg(c.x, c.y, b.x, b.y, a.x, a.y) < c.r + cr) return true;
+          for (const c of circles) {
+            if (distPointSeg(c.x, c.y, b.x, b.y, a.x, a.y) < c.r + cr) {
+              if (!hand.fist) return { kind: 'break' };
+              if (!bounce && d.cool <= 0) bounce = { kind: 'bounce', px: a.x, py: a.y, hvx: a.x - b.x, hvy: a.y - b.y, cx: c.x, cy: c.y };
+            }
+          }
         }
       }
     } else if (mode === 'motion') {
-      for (const c of circles) if (motionInCircle(c.x, c.y, c.r + extra * 0.5)) return true;
+      for (const c of circles) if (motionInCircle(c.x, c.y, c.r + extra * 0.5)) return { kind: 'break' };
     }
     for (const p of pointers.values())
       for (const c of circles)
-        if (distPointSeg(c.x, c.y, p.px, p.py, p.x, p.y) < c.r + 22 + extra * 0.5) return true;
-    return false;
+        if (distPointSeg(c.x, c.y, p.px, p.py, p.x, p.y) < c.r + 22 + extra * 0.5) return { kind: 'break' };
+    return bounce;
+  }
+  function bounceDoll(d, h) {
+    let dx = h.cx - h.px, dy = h.cy - h.py;
+    const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+    let vx = dx * 7 + h.hvx * 0.6, vy = dy * 7 + h.hvy * 0.6 - 1.5;
+    const sp = Math.hypot(vx, vy);
+    if (sp > 16) { vx *= 16 / sp; vy *= 16 / sp; }
+    d.vx = vx; d.vy = vy; d.vr = (Math.random() - 0.5) * 0.25;
+    d.bounced = true; d.cool = 10;
+    d.x += dx * 6; d.y += dy * 6;
+    for (let i = 0; i < 6; i++) particles.push({ x: h.px, y: h.py, vx: (Math.random() - 0.5) * 7, vy: (Math.random() - 0.5) * 7,
+      size: 3 + Math.random() * 3, color: '#ffd9a0', life: 0.6 });
+    pop(180);
   }
   function breakDoll(d) {
     for (const c of dollCircles(d))
@@ -426,7 +450,7 @@
   function drawHands() {
     for (const hand of hands) {
       ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(0,255,204,.75)'; ctx.lineWidth = 4;
+      ctx.strokeStyle = hand.fist ? 'rgba(255,170,60,.95)' : 'rgba(0,255,204,.75)'; ctx.lineWidth = hand.fist ? 6 : 4;
       ctx.beginPath();
       for (const [a, b] of BONES) { ctx.moveTo(hand.lm[a].x, hand.lm[a].y); ctx.lineTo(hand.lm[b].x, hand.lm[b].y); }
       ctx.stroke();
@@ -445,16 +469,21 @@
     }
     for (let i = dolls.length - 1; i >= 0; i--) {
       const d = dolls[i];
+      if (d.bounced) { d.vy = Math.min(7, d.vy + 0.12); d.vx *= 0.995; }   // tras un rebote, cae con gravedad
+      if (d.cool > 0) d.cool--;
       d.x += d.vx; d.y += d.vy; d.rot += d.vr; d.t += 0.12;
-      if (d.x < 30 || d.x > W - 30) d.vx *= -1;
-      if (isHit(d)) { breakDoll(d); dolls.splice(i, 1); continue; }
+      if (d.x < 30) { d.x = 30; d.vx = Math.abs(d.vx); }
+      if (d.x > W - 30) { d.x = W - 30; d.vx = -Math.abs(d.vx); }
+      const hit = hitInfo(d);
+      if (hit && hit.kind === 'break') { breakDoll(d); dolls.splice(i, 1); continue; }
+      if (hit && hit.kind === 'bounce') bounceDoll(d, hit);
       drawDoll(d);
       if (d.y > H + 90) dolls.splice(i, 1);
     }
     drawHands();
     if (performance.now() - lastHitAt > 1500 && combo) { combo = 0; comboEl.style.display = 'none'; }
     statusEl.textContent = mode === 'hands'
-      ? (hands.length ? `🖐 ${hands.length} mano${hands.length > 1 ? 's' : ''} detectada${hands.length > 1 ? 's' : ''}` : '🖐 Enseña la mano a la cámara')
+      ? (hands.length ? (hands.some(h => h.fist) ? '✊ Puño: los muñecos rebotan' : '🖐 Mano abierta: los rompes') : '🖐 Enseña la mano a la cámara')
       : 'Modo movimiento (sin detector de manos)';
   }
 
