@@ -44,6 +44,7 @@
   .btn-start:disabled { opacity: .6; }
   #msg { margin-top: 6px; color: #ff8a8a; max-width: 440px; }
   .tip { color: #8a8fa3; font-size: .85rem; max-width: 440px; line-height: 1.4; }
+  #version { margin-top: 14px; color: #5f6478; font-size: .75rem; }
 </style>
 </head>
 <body>
@@ -80,11 +81,14 @@
 
     <div class="tip">Buena luz y la mano bien visible delante de la cámara.</div>
     <div id="msg"></div>
+    <div id="version"></div>
   </div>
 </div>
 
 <script>
 (() => {
+  // súbela en cada cambio para saber qué versión está cargada en el móvil
+  const APP_VERSION = '1.1', APP_DATE = '1 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -98,6 +102,7 @@
   const canvas = $('c'), ctx = canvas.getContext('2d');
   const video = $('video');
   const scoreEl = $('score'), comboEl = $('combo'), statusEl = $('status'), sensEl = $('sens');
+  $('version').textContent = `Versión ${APP_VERSION} · ${APP_DATE}`;
 
   let W = 0, H = 0;
   let running = false, loopId = 0;
@@ -255,7 +260,26 @@
     let curled = 0;
     for (const [t, j] of [[8, 6], [12, 10], [16, 14], [20, 18]]) if (dist(lm[t], lm[0]) < dist(lm[j], lm[0])) curled++;
     const fist = curled >= (prevHand && prevHand.fist ? 2 : 3);   // histéresis para que no parpadee
-    return { lm, pts, size: dist(lm[0], lm[9]), fist };
+    return { lm, pts, palm, size: dist(lm[0], lm[9]), fist };
+  }
+
+  // centro de la palma en pantalla, directamente de los landmarks crudos
+  const rawPalm = lms => [0, 5, 9, 13, 17].reduce((s, i) => {
+    const p = toScreen(lms[i].x, lms[i].y);
+    return { x: s.x + p.x / 5, y: s.y + p.y / 5 };
+  }, { x: 0, y: 0 });
+
+  // empareja cada mano nueva con la más cercana del fotograma anterior (MediaPipe puede cambiar el orden)
+  function matchHands(found, old) {
+    const palms = found.map(rawPalm), pairs = [];
+    palms.forEach((p, i) => old.forEach((h, j) => {
+      const d = dist(p, h.palm);
+      if (d < Math.max(120, h.size * 3)) pairs.push({ i, j, d });
+    }));
+    pairs.sort((a, b) => a.d - b.d);
+    const match = new Array(found.length).fill(null), used = new Set();
+    for (const { i, j } of pairs) if (match[i] === null && !used.has(j)) { match[i] = old[j]; used.add(j); }
+    return match;
   }
 
   function detectHands() {
@@ -264,9 +288,10 @@
     let res;
     try { res = handLM.detectForVideo(video, performance.now()); } catch (e) { return; }
     const found = (res && res.landmarks) || [];
-    prevHands = hands;
-    hands = found.map((lms, i) => buildHand(lms, hands.length === found.length ? hands[i] : null));
-    if (prevHands.length !== hands.length) prevHands = hands;
+    const match = matchHands(found, hands);
+    hands = found.map((lms, i) => buildHand(lms, match[i]));
+    // prevHands[i] es la misma mano en el fotograma anterior; una mano nueva no tiene trazo previo
+    prevHands = hands.map((h, i) => match[i] || h);
   }
 
   // plan B: movimiento
