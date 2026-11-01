@@ -28,8 +28,6 @@
   .sens { background: rgba(0,0,0,.6); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.2);
     border-radius: 18px; padding: 8px 16px; display: flex; align-items: center; gap: 10px; font-size: .85rem; }
   .sens input { width: 130px; accent-color: #00ffcc; touch-action: auto; }
-  #btn-skip { display: none; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.2); color: #fff;
-    border-radius: 18px; padding: 8px 16px; font-weight: bold; cursor: pointer; }
 
   .overlay { position: absolute; inset: 0; background: rgba(13,14,21,.9); backdrop-filter: blur(12px);
     display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 20;
@@ -43,11 +41,7 @@
   .game-card small { display: block; color: #9aa0b5; margin-bottom: 12px; line-height: 1.35; }
   .btn-start { background: linear-gradient(135deg,#00ffcc,#0099ff); border: 0; color: #000; padding: 13px 30px;
     font-size: 1.1rem; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,255,204,.35); }
-  .btn-start.alt { background: linear-gradient(135deg,#ffd54a,#ff7a59); box-shadow: 0 6px 20px rgba(255,160,80,.35); }
   .btn-start:disabled { opacity: .6; }
-  .levels { display: flex; justify-content: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-  .levels label { background: rgba(255,255,255,.1); border-radius: 16px; padding: 7px 14px; font-size: .9rem; cursor: pointer; }
-  .levels input { accent-color: #ffd54a; margin-right: 6px; }
   #msg { margin-top: 6px; color: #ff8a8a; max-width: 440px; }
   .tip { color: #8a8fa3; font-size: .85rem; max-width: 440px; line-height: 1.4; }
 </style>
@@ -70,10 +64,9 @@
   </div>
 
   <div class="bottom">
-    <label class="sens"><span id="sens-label">Sensibilidad</span>
+    <label class="sens"><span>Sensibilidad</span>
       <input type="range" id="sens" min="0" max="40" value="14" />
     </label>
-    <button id="btn-skip">Saltar ⏭</button>
   </div>
 
   <div class="overlay" id="start">
@@ -82,20 +75,10 @@
     <div class="game-card">
       <h2>🖐 Rompe Muñecos</h2>
       <small>Mano abierta: rompes los muñecos que caen. Puño cerrado: ¡rebotan!</small>
-      <button class="btn-start" data-game="dolls">Jugar</button>
+      <button class="btn-start">Jugar</button>
     </div>
 
-    <div class="game-card">
-      <h2>🧍 La Silueta</h2>
-      <small>Colócate dentro de la silueta imitando la postura. Cuando lo consigas, ¡brilla!</small>
-      <div class="levels">
-        <label><input type="radio" name="lvl" value="easy" checked>Fácil (brazos)</label>
-        <label><input type="radio" name="lvl" value="hard">Difícil (cuerpo)</label>
-      </div>
-      <button class="btn-start alt" data-game="pose">Jugar</button>
-    </div>
-
-    <div class="tip">Buena luz. Para la silueta apoya el móvil o la tablet (mejor en horizontal) a 1,5–2 m para que se vea el cuerpo entero.</div>
+    <div class="tip">Buena luz y la mano bien visible delante de la cámara.</div>
     <div id="msg"></div>
   </div>
 </div>
@@ -106,7 +89,6 @@
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
   const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-  const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
   const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
                  [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
@@ -117,17 +99,12 @@
   const video = $('video');
   const scoreEl = $('score'), comboEl = $('combo'), statusEl = $('status'), sensEl = $('sens');
 
-  const sil = document.createElement('canvas');             // lienzo auxiliar para la silueta
-  const silCtx = sil.getContext('2d');
-
   let W = 0, H = 0;
   let running = false, loopId = 0;
-  let game = 'dolls';             // 'dolls' | 'pose'
-  let mode = 'none';              // 'hands' | 'motion' | 'pose'
-  let handLM = null, poseLM = null;
+  let mode = 'none';              // 'hands' | 'motion'
+  let handLM = null;
   let mpModule = null, mpFileset = null;
   let lastVideoTime = -1;
-  const sensVals = { dolls: 14, pose: 20 };
 
   let score = 0, combo = 0, lastHitAt = 0;
   let dolls = [], particles = [], popups = [];
@@ -148,9 +125,6 @@
     o.connect(g); g.connect(audioCtx.destination);
     o.start(t); o.stop(t + 0.13);
   }
-  function fanfare() {
-    [392, 494, 587, 784].forEach((f, i) => setTimeout(() => pop(f), i * 130));
-  }
 
   // ---------- tamaño / mapeo vídeo -> pantalla (cover + espejo) ----------
   let map = { ox: 0, oy: 0, dw: 1, dh: 1 };
@@ -159,7 +133,6 @@
     W = window.innerWidth; H = window.innerHeight;
     canvas.width = W * dpr; canvas.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    sil.width = W; sil.height = H;
     updateMap();
   }
   function updateMap() {
@@ -188,10 +161,8 @@
   document.addEventListener('webkitfullscreenchange', resize);
 
   // ---------- menú / arranque ----------
-  document.querySelectorAll('[data-game]').forEach(b => b.addEventListener('click', () => startGame(b.dataset.game)));
+  document.querySelectorAll('.btn-start').forEach(b => b.addEventListener('click', startGame));
   $('btn-menu').addEventListener('click', showMenu);
-  $('btn-skip').addEventListener('click', () => { if (game === 'pose' && running) nextPose(); });
-  sensEl.addEventListener('input', () => { sensVals[game] = +sensEl.value; });
 
   function showMenu() {
     running = false; loopId++;
@@ -224,7 +195,7 @@
     catch (e) { return await Cls.createFromOptions(mpFileset, opts('CPU')); }
   }
 
-  async function startGame(g) {
+  async function startGame() {
     const msg = $('msg');
     msg.textContent = '';
     document.querySelectorAll('.btn-start').forEach(b => b.disabled = true);
@@ -240,34 +211,18 @@
       return;
     }
 
-    game = g;
-    sensEl.value = sensVals[g];
-    $('sens-label').textContent = g === 'pose' ? 'Tolerancia' : 'Sensibilidad';
-    $('btn-skip').style.display = g === 'pose' ? 'block' : 'none';
     $('start').style.display = 'none';
     statusEl.textContent = 'Cargando detector…';
     resize();
 
     try {
       await loadMP();
-      if (g === 'dolls') {
-        if (!handLM) handLM = await makeLandmarker(mpModule.HandLandmarker, HAND_MODEL, {
-          numHands: 2, minHandDetectionConfidence: 0.35, minHandPresenceConfidence: 0.35, minTrackingConfidence: 0.35 });
-        mode = 'hands';
-      } else {
-        if (!poseLM) poseLM = await makeLandmarker(mpModule.PoseLandmarker, POSE_MODEL, {
-          numPoses: 1, minPoseDetectionConfidence: 0.4, minPosePresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
-        mode = 'pose';
-      }
+      if (!handLM) handLM = await makeLandmarker(mpModule.HandLandmarker, HAND_MODEL, {
+        numHands: 2, minHandDetectionConfidence: 0.35, minHandPresenceConfidence: 0.35, minTrackingConfidence: 0.35 });
+      mode = 'hands';
     } catch (err) {
       console.warn('No se pudo cargar el detector', err);
-      if (g === 'dolls') { mode = 'motion'; }
-      else {
-        $('start').style.display = 'flex';
-        document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
-        msg.textContent = 'No se pudo cargar el detector de cuerpo (hace falta internet la primera vez).';
-        return;
-      }
+      mode = 'motion';
     }
 
     // reinicio de estado
@@ -276,11 +231,6 @@
     lastVideoTime = -1;
     startedAt = performance.now();
     nextSpawnAt = startedAt + 800;
-    if (g === 'pose') {
-      pose.user = {}; pose.has = false; pose.idx = -1; pose.hold = 0; pose.successUntil = 0; pose.lastT = 0;
-      pose.level = (document.querySelector('input[name=lvl]:checked') || {}).value || 'easy';
-      nextPose();
-    }
     running = true;
     const id = ++loopId;
     requestAnimationFrame(t => loop(t, id));
@@ -488,190 +438,6 @@
   }
 
   // =====================================================================
-  //  JUEGO 2: LA SILUETA (cuerpo)
-  // =====================================================================
-  // Posturas por ángulos: 0° = hacia abajo, 90° = horizontal hacia fuera, 180° = hacia arriba.
-  // L / R = lado izquierdo / derecho de la PANTALLA (la imagen va en espejo).
-  const POSES = [
-    { name: 'Brazos en cruz',          a: { L: [90, 90],   R: [90, 90] },   l: { L: [7, 7],   R: [7, 7] } },
-    { name: '¡Brazos arriba!',         a: { L: [155, 160], R: [155, 160] }, l: { L: [7, 7],   R: [7, 7] } },
-    { name: 'Un brazo arriba',         a: { L: [160, 165], R: [15, 10] },   l: { L: [7, 7],   R: [7, 7] } },
-    { name: 'El otro brazo arriba',    a: { L: [15, 10],   R: [160, 165] }, l: { L: [7, 7],   R: [7, 7] } },
-    { name: 'Estrella ⭐',              a: { L: [135, 135], R: [135, 135] }, l: { L: [25, 25], R: [25, 25] } },
-    { name: 'Codos doblados',          a: { L: [90, 180],  R: [90, 180] },  l: { L: [7, 7],   R: [7, 7] } },
-    { name: 'Firmes como un soldado',  a: { L: [12, 8],    R: [12, 8] },    l: { L: [4, 4],   R: [4, 4] } },
-    { name: 'Levanta una pierna',      a: { L: [90, 90],   R: [90, 90] },   l: { L: [50, 50], R: [6, 6] },  hardOnly: true },
-    { name: 'Levanta la otra pierna',  a: { L: [90, 90],   R: [90, 90] },   l: { L: [6, 6],   R: [50, 50] }, hardOnly: true }
-  ];
-  // landmarks de MediaPipe Pose. Imagen en espejo: lado izquierdo de pantalla = lado derecho del cuerpo
-  const LM = {
-    L: { sh: 12, el: 14, wr: 16, hp: 24, kn: 26, an: 28 },
-    R: { sh: 11, el: 13, wr: 15, hp: 23, kn: 25, an: 27 }
-  };
-  const POSE_IDS = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
-  const USER_BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
-
-  const pose = { idx: 0, level: 'easy', user: {}, has: false, hold: 0, successUntil: 0, lastT: 0, frac: 0 };
-  const HOLD_MS = 600, SUCCESS_MS = 1900;
-
-  const unitT = () => Math.min(0.23 * H, 0.27 * W);   // "torso" en píxeles
-
-  function buildTarget(p) {
-    const T = unitT(), ox = W / 2, oy = H / 2;
-    const P = (x, y) => ({ x: ox + x * T, y: oy + y * T });
-    const dir = (deg, side) => { const r = deg * Math.PI / 180; return { x: side * Math.sin(r), y: Math.cos(r) }; };
-    const pts = {};
-    for (const s of ['L', 'R']) {
-      const sd = s === 'L' ? -1 : 1;
-      const sh = P(sd * 0.42, -1), hp = P(sd * 0.22, 0);
-      const step = (from, deg, len) => { const d = dir(deg, sd); return { x: from.x + d.x * len * T, y: from.y + d.y * len * T }; };
-      const el = step(sh, p.a[s][0], 0.62), wr = step(el, p.a[s][1], 0.55);
-      const kn = step(hp, p.l[s][0], 0.85), an = step(kn, p.l[s][1], 0.85);
-      pts[s] = { sh, el, wr, hp, kn, an };
-    }
-    return { T, pts, head: P(0, -1.6), neck: P(0, -1.05) };
-  }
-
-  function evalMatch(tg) {
-    const hard = pose.level === 'hard';
-    const keys = hard ? ['sh', 'el', 'wr', 'hp', 'kn', 'an'] : ['sh', 'el', 'wr'];
-    const tol = tg.T * (0.42 + 0.014 * (+sensEl.value));
-    let ok = 0, total = 0, vis = 0; const flags = {};
-    for (const s of ['L', 'R']) for (const k of keys) {
-      total++;
-      const u = pose.user[LM[s][k]], t = tg.pts[s][k];
-      const seen = u && u.v > 0.3;
-      if (seen) vis++;
-      const m = !!(seen && Math.hypot(u.x - t.x, u.y - t.y) < tol);
-      flags[s + k] = m; if (m) ok++;
-    }
-    return { ok, total, vis, flags, keys, tol };
-  }
-
-  function drawSilhouette(tg, color) {
-    const hard = pose.level === 'hard', g = silCtx, T = tg.T;
-    g.clearRect(0, 0, W, H);
-    g.fillStyle = g.strokeStyle = color;
-    g.lineCap = g.lineJoin = 'round';
-    g.lineWidth = 0.30 * T;
-    const limb = (a, b) => { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); };
-    for (const s of ['L', 'R']) {
-      const q = tg.pts[s];
-      limb(q.sh, q.el); limb(q.el, q.wr);
-      if (hard) { limb(q.hp, q.kn); limb(q.kn, q.an); }
-    }
-    const L = tg.pts.L, R = tg.pts.R;
-    g.beginPath(); g.moveTo(L.sh.x, L.sh.y); g.lineTo(R.sh.x, R.sh.y); g.lineTo(R.hp.x, R.hp.y); g.lineTo(L.hp.x, L.hp.y); g.closePath();
-    g.fill(); g.lineWidth = 0.14 * T; g.stroke();
-    g.lineWidth = 0.22 * T; g.beginPath(); g.moveTo(tg.neck.x, tg.neck.y); g.lineTo(tg.head.x, tg.head.y + 0.1 * T); g.stroke();
-    g.beginPath(); g.arc(tg.head.x, tg.head.y, 0.32 * T, 0, 7); g.fill();
-    for (const s of ['L', 'R']) { g.beginPath(); g.arc(tg.pts[s].wr.x, tg.pts[s].wr.y, 0.2 * T, 0, 7); g.fill();
-      if (hard) { g.beginPath(); g.arc(tg.pts[s].an.x, tg.pts[s].an.y, 0.2 * T, 0, 7); g.fill(); } }
-  }
-
-  function nextPose() {
-    const hard = pose.level === 'hard';
-    const pool = POSES.filter(p => hard || !p.hardOnly);
-    const cur = pool.indexOf(POSES[pose.idx]);
-    const r = Math.floor(Math.random() * (pool.length - 1));
-    const pick = cur < 0 ? pool[Math.floor(Math.random() * pool.length)] : pool[(cur + 1 + r) % pool.length];
-    pose.idx = POSES.indexOf(pick);
-    pose.hold = 0; pose.successUntil = 0;
-  }
-
-  function detectPose() {
-    if (video.readyState < 2 || video.currentTime === lastVideoTime) return;
-    lastVideoTime = video.currentTime;
-    let res;
-    try { res = poseLM.detectForVideo(video, performance.now()); } catch (e) { return; }
-    const l = res && res.landmarks && res.landmarks[0];
-    if (!l || l.length < 29) { pose.has = false; pose.user = {}; return; }
-    pose.has = true;
-    const A = 0.6;
-    for (const id of POSE_IDS) {
-      const s = toScreen(l[id].x, l[id].y), o = pose.user[id];
-      pose.user[id] = { x: o ? o.x + (s.x - o.x) * A : s.x, y: o ? o.y + (s.y - o.y) * A : s.y,
-                        v: l[id].visibility == null ? 1 : l[id].visibility };
-    }
-  }
-
-  function outlinedText(text, x, y, size, color) {
-    ctx.font = `bold ${size}px 'Segoe UI', sans-serif`; ctx.textAlign = 'center';
-    ctx.lineWidth = Math.max(4, size / 6); ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.lineJoin = 'round';
-    ctx.strokeText(text, x, y); ctx.fillStyle = color; ctx.fillText(text, x, y);
-  }
-
-  function poseStep(t) {
-    const dt = Math.min(100, pose.lastT ? t - pose.lastT : 16); pose.lastT = t;
-    detectPose();
-    const p = POSES[pose.idx], tg = buildTarget(p);
-    const T = tg.T;
-
-    // esqueleto del jugador
-    ctx.lineCap = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,255,255,.85)';
-    ctx.beginPath();
-    for (const [a, b] of USER_BONES) {
-      const A = pose.user[a], B = pose.user[b];
-      if (A && B && A.v > 0.3 && B.v > 0.3) { ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); }
-    }
-    ctx.stroke();
-
-    const celebrating = t < pose.successUntil;
-    let m = null;
-    if (!celebrating) {
-      m = evalMatch(tg);
-      pose.frac = m.total ? m.ok / m.total : 0;
-      if (m.ok === m.total) pose.hold += dt; else pose.hold = Math.max(0, pose.hold - dt * 2);
-      if (pose.hold >= HOLD_MS) {                         // ¡conseguido!
-        pose.successUntil = t + SUCCESS_MS;
-        score += 100; scoreEl.textContent = score;
-        fanfare();
-        for (let i = 0; i < 90; i++) particles.push({
-          x: Math.random() * W, y: H * 0.2 + Math.random() * H * 0.2, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8,
-          size: Math.random() * 7 + 4, color: `hsl(${Math.random() * 360},90%,60%)`, life: 1.4 });
-      }
-    }
-    const done = t < pose.successUntil;
-
-    // silueta
-    const pulse = 0.5 + 0.5 * Math.sin(t / 120);
-    let color, alpha, blur;
-    if (done) { color = '#ffe45c'; alpha = 0.85; blur = 50 + 50 * pulse; }
-    else if (m && m.ok === m.total) { color = '#3dff7a'; alpha = 0.75; blur = 45 + 25 * pulse; }
-    else { color = `hsl(${Math.round(pose.frac * 110)},90%,58%)`; alpha = 0.42; blur = 8; }
-    drawSilhouette(tg, color);
-    ctx.save();
-    ctx.globalAlpha = alpha; ctx.shadowColor = color; ctx.shadowBlur = blur;
-    ctx.drawImage(sil, 0, 0, W, H);
-    if (done || (m && m.ok === m.total)) { ctx.globalAlpha = alpha * 0.8; ctx.drawImage(sil, 0, 0, W, H); }
-    ctx.restore();
-
-    // marcas en manos / pies: se ponen verdes al acertar
-    if (m) {
-      for (const s of ['L', 'R']) for (const k of m.keys) {
-        if (k === 'sh' || k === 'hp') continue;
-        const q = tg.pts[s][k], hit = m.flags[s + k];
-        ctx.beginPath(); ctx.arc(q.x, q.y, (k === 'wr' || k === 'an' ? 0.17 : 0.11) * T, 0, 7);
-        if (hit) { ctx.fillStyle = 'rgba(61,255,122,.9)'; ctx.fill(); }
-        ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.setLineDash(hit ? [] : [6, 5]); ctx.stroke(); ctx.setLineDash([]);
-      }
-    }
-
-    // textos y barra
-    outlinedText(done ? '¡Muy bien! 🎉' : p.name, W / 2, Math.max(78, H * 0.12), Math.min(36, Math.max(22, W / 18)), done ? '#ffe45c' : '#fff');
-    if (!done) {
-      const bw = Math.min(320, W * 0.5), bx = (W - bw) / 2, by = H - 84;
-      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(bx, by, bw, 10);
-      ctx.fillStyle = '#3dff7a'; ctx.fillRect(bx, by, bw * Math.min(1, pose.hold / HOLD_MS), 10);
-    }
-    if (done && t >= pose.successUntil - 16) nextPose();   // pasa a la siguiente al acabar
-    if (!done && pose.successUntil && t >= pose.successUntil) nextPose();
-
-    statusEl.textContent = !pose.has ? '🧍 Colócate delante de la cámara'
-      : (m && m.vis < m.total * 0.5 ? '↔ Aléjate para que se te vea entero' : (m ? `✅ ${m.ok}/${m.total} partes bien` : '🎉'));
-  }
-
-  // =====================================================================
   //  BUCLE COMÚN
   // =====================================================================
   function drawVideo() {
@@ -685,7 +451,7 @@
   function loop(t, id) {
     if (!running || id !== loopId) return;
     drawVideo();
-    if (game === 'dolls') dollsStep(t); else poseStep(t);
+    dollsStep(t);
 
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
