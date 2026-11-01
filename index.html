@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Juegos de Movimiento</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0d0e15; color: #fff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+  #app { position: relative; width: 100%; height: 100%; background: #000; }
+  canvas#c { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #video { display: none; }
+
+  .hud { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between;
+    align-items: flex-start; gap: 8px; z-index: 10; pointer-events: none; }
+  .pill { background: rgba(0,0,0,.6); backdrop-filter: blur(8px); padding: 8px 16px; border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.2); font-weight: bold; display: inline-block; }
+  .pill span { color: #00ffcc; }
+  #combo { color: #ffd54a; font-size: .9rem; margin-top: 6px; display: none; }
+  #status { font-size: .8rem; font-weight: normal; opacity: .9; margin-top: 6px; }
+  .hud-right { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .btn-top { pointer-events: auto; border: 0; color: #fff; padding: 9px 16px; border-radius: 22px; font-weight: bold; cursor: pointer; }
+  #btn-fs { background: linear-gradient(135deg,#ff007f,#7928ca); }
+  #btn-menu { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3); }
+
+  .bottom { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 10; display: flex; justify-content: center; gap: 10px; }
+  .sens { background: rgba(0,0,0,.6); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 18px; padding: 8px 16px; display: flex; align-items: center; gap: 10px; font-size: .85rem; }
+  .sens input { width: 130px; accent-color: #00ffcc; touch-action: auto; }
+  #btn-skip { display: none; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.2); color: #fff;
+    border-radius: 18px; padding: 8px 16px; font-weight: bold; cursor: pointer; }
+
+  .overlay { position: absolute; inset: 0; background: rgba(13,14,21,.9); backdrop-filter: blur(12px);
+    display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 20;
+    text-align: center; padding: 20px; overflow-y: auto; }
+  .overlay h1 { font-size: 2.1rem; margin-bottom: 10px;
+    background: linear-gradient(to right,#00ffcc,#0099ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .overlay p { font-size: 1rem; color: #ccc; max-width: 460px; margin-bottom: 18px; line-height: 1.45; }
+  .game-card { width: 100%; max-width: 420px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 22px; padding: 16px; margin-bottom: 14px; }
+  .game-card h2 { font-size: 1.15rem; margin-bottom: 4px; }
+  .game-card small { display: block; color: #9aa0b5; margin-bottom: 12px; line-height: 1.35; }
+  .btn-start { background: linear-gradient(135deg,#00ffcc,#0099ff); border: 0; color: #000; padding: 13px 30px;
+    font-size: 1.1rem; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,255,204,.35); }
+  .btn-start.alt { background: linear-gradient(135deg,#ffd54a,#ff7a59); box-shadow: 0 6px 20px rgba(255,160,80,.35); }
+  .btn-start:disabled { opacity: .6; }
+  .levels { display: flex; justify-content: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .levels label { background: rgba(255,255,255,.1); border-radius: 16px; padding: 7px 14px; font-size: .9rem; cursor: pointer; }
+  .levels input { accent-color: #ffd54a; margin-right: 6px; }
+  #msg { margin-top: 6px; color: #ff8a8a; max-width: 440px; }
+  .tip { color: #8a8fa3; font-size: .85rem; max-width: 440px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+  <video id="video" playsinline muted></video>
+
+  <div class="hud">
+    <div>
+      <div class="pill">Puntos: <span id="score">0</span></div><br>
+      <div class="pill" id="combo">Combo x2</div>
+      <div class="pill" id="status">Cargando…</div>
+    </div>
+    <div class="hud-right">
+      <button class="btn-top" id="btn-fs">Pantalla completa</button>
+      <button class="btn-top" id="btn-menu">☰ Menú</button>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <label class="sens"><span id="sens-label">Sensibilidad</span>
+      <input type="range" id="sens" min="0" max="40" value="14" />
+    </label>
+    <button id="btn-skip">Saltar ⏭</button>
+  </div>
+
+  <div class="overlay" id="start">
+    <h1>Juegos de Movimiento</h1>
+
+    <div class="game-card">
+      <h2>🖐 Rompe Muñecos</h2>
+      <small>Toca con la mano los muñecos que caen para romperlos.</small>
+      <button class="btn-start" data-game="dolls">Jugar</button>
+    </div>
+
+    <div class="game-card">
+      <h2>🧍 La Silueta</h2>
+      <small>Colócate dentro de la silueta imitando la postura. Cuando lo consigas, ¡brilla!</small>
+      <div class="levels">
+        <label><input type="radio" name="lvl" value="easy" checked>Fácil (brazos)</label>
+        <label><input type="radio" name="lvl" value="hard">Difícil (cuerpo)</label>
+      </div>
+      <button class="btn-start alt" data-game="pose">Jugar</button>
+    </div>
+
+    <div class="tip">Buena luz. Para la silueta apoya el móvil o la tablet (mejor en horizontal) a 1,5–2 m para que se vea el cuerpo entero.</div>
+    <div id="msg"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const MP_VERSION = '0.10.14';
+  const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
+  const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
+  const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+  const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+
+  const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+                 [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+  const TIPS = [4, 8, 12, 16, 20];
+
+  const $ = id => document.getElementById(id);
+  const canvas = $('c'), ctx = canvas.getContext('2d');
+  const video = $('video');
+  const scoreEl = $('score'), comboEl = $('combo'), statusEl = $('status'), sensEl = $('sens');
+
+  const sil = document.createElement('canvas');             // lienzo auxiliar para la silueta
+  const silCtx = sil.getContext('2d');
+
+  let W = 0, H = 0;
+  let running = false, loopId = 0;
+  let game = 'dolls';             // 'dolls' | 'pose'
+  let mode = 'none';              // 'hands' | 'motion' | 'pose'
+  let handLM = null, poseLM = null;
+  let mpModule = null, mpFileset = null;
+  let lastVideoTime = -1;
+  const sensVals = { dolls: 14, pose: 20 };
+
+  let score = 0, combo = 0, lastHitAt = 0;
+  let dolls = [], particles = [], popups = [];
+  let nextSpawnAt = 0, startedAt = 0;
+  let hands = [], prevHands = [];
+  const pointers = new Map();
+
+  // ---------- audio ----------
+  let audioCtx = null;
+  function pop(freq = 300) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime;
+    o.type = 'sine';
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(freq * 2.6, t + 0.1);
+    g.gain.setValueAtTime(0.3, t);
+    g.gain.exponentialRampToValueAtTime(0.01, t + 0.12);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + 0.13);
+  }
+  function fanfare() {
+    [392, 494, 587, 784].forEach((f, i) => setTimeout(() => pop(f), i * 130));
+  }
+
+  // ---------- tamaño / mapeo vídeo -> pantalla (cover + espejo) ----------
+  let map = { ox: 0, oy: 0, dw: 1, dh: 1 };
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sil.width = W; sil.height = H;
+    updateMap();
+  }
+  function updateMap() {
+    const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+    const s = Math.max(W / vw, H / vh);
+    map.dw = vw * s; map.dh = vh * s;
+    map.ox = (W - map.dw) / 2; map.oy = (H - map.dh) / 2;
+  }
+  const toScreen = (nx, ny) => ({ x: W - (map.ox + nx * map.dw), y: map.oy + ny * map.dh });
+  const toNorm = (sx, sy) => ({ nx: (W - sx - map.ox) / map.dw, ny: (sy - map.oy) / map.dh });
+  window.addEventListener('resize', resize);
+
+  // ---------- pantalla completa ----------
+  $('btn-fs').addEventListener('click', () => {
+    const el = $('app');
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      try {
+        const r = (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
+        if (r && r.then) r.then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} }).catch(() => {});
+      } catch (e) {}
+    } else {
+      (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document);
+    }
+  });
+  document.addEventListener('fullscreenchange', resize);
+  document.addEventListener('webkitfullscreenchange', resize);
+
+  // ---------- menú / arranque ----------
+  document.querySelectorAll('[data-game]').forEach(b => b.addEventListener('click', () => startGame(b.dataset.game)));
+  $('btn-menu').addEventListener('click', showMenu);
+  $('btn-skip').addEventListener('click', () => { if (game === 'pose' && running) nextPose(); });
+  sensEl.addEventListener('input', () => { sensVals[game] = +sensEl.value; });
+
+  function showMenu() {
+    running = false; loopId++;
+    dolls = []; particles = []; popups = []; hands = []; prevHands = [];
+    $('start').style.display = 'flex';
+    document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
+  }
+
+  async function ensureCamera() {
+    if (video.srcObject && video.readyState >= 2) return;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+  }
+
+  async function loadMP() {
+    if (!mpModule) {
+      mpModule = await import(MP_JS);
+      mpFileset = await mpModule.FilesetResolver.forVisionTasks(MP_WASM);
+    }
+  }
+  async function makeLandmarker(Cls, model, extra) {
+    const opts = delegate => Object.assign({
+      baseOptions: { modelAssetPath: model, delegate }, runningMode: 'VIDEO'
+    }, extra);
+    try { return await Cls.createFromOptions(mpFileset, opts('GPU')); }
+    catch (e) { return await Cls.createFromOptions(mpFileset, opts('CPU')); }
+  }
+
+  async function startGame(g) {
+    const msg = $('msg');
+    msg.textContent = '';
+    document.querySelectorAll('.btn-start').forEach(b => b.disabled = true);
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+
+    try { await ensureCamera(); }
+    catch (err) {
+      msg.textContent = 'No se pudo abrir la cámara. Da permiso en el navegador (y usa https o localhost).';
+      document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
+      return;
+    }
+
+    game = g;
+    sensEl.value = sensVals[g];
+    $('sens-label').textContent = g === 'pose' ? 'Tolerancia' : 'Sensibilidad';
+    $('btn-skip').style.display = g === 'pose' ? 'block' : 'none';
+    $('start').style.display = 'none';
+    statusEl.textContent = 'Cargando detector…';
+    resize();
+
+    try {
+      await loadMP();
+      if (g === 'dolls') {
+        if (!handLM) handLM = await makeLandmarker(mpModule.HandLandmarker, HAND_MODEL, {
+          numHands: 2, minHandDetectionConfidence: 0.35, minHandPresenceConfidence: 0.35, minTrackingConfidence: 0.35 });
+        mode = 'hands';
+      } else {
+        if (!poseLM) poseLM = await makeLandmarker(mpModule.PoseLandmarker, POSE_MODEL, {
+          numPoses: 1, minPoseDetectionConfidence: 0.4, minPosePresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
+        mode = 'pose';
+      }
+    } catch (err) {
+      console.warn('No se pudo cargar el detector', err);
+      if (g === 'dolls') { mode = 'motion'; }
+      else {
+        $('start').style.display = 'flex';
+        document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
+        msg.textContent = 'No se pudo cargar el detector de cuerpo (hace falta internet la primera vez).';
+        return;
+      }
+    }
+
+    // reinicio de estado
+    score = 0; combo = 0; scoreEl.textContent = 0; comboEl.style.display = 'none';
+    dolls = []; particles = []; popups = []; hands = []; prevHands = [];
+    lastVideoTime = -1;
+    startedAt = performance.now();
+    nextSpawnAt = startedAt + 800;
+    if (g === 'pose') {
+      pose.user = {}; pose.has = false; pose.idx = -1; pose.hold = 0; pose.successUntil = 0; pose.lastT = 0;
+      pose.level = (document.querySelector('input[name=lvl]:checked') || {}).value || 'easy';
+      nextPose();
+    }
+    running = true;
+    const id = ++loopId;
+    requestAnimationFrame(t => loop(t, id));
+  }
+
+  // =====================================================================
+  //  JUEGO 1: ROMPE MUÑECOS (mano)
+  // =====================================================================
+  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+  function buildHand(lms, prevHand) {
+    const raw = lms.map(l => toScreen(l.x, l.y));
+    const A = 0.7;
+    const lm = raw.map((p, i) => prevHand && prevHand.lm
+      ? { x: prevHand.lm[i].x + (p.x - prevHand.lm[i].x) * A, y: prevHand.lm[i].y + (p.y - prevHand.lm[i].y) * A }
+      : p);
+    const pts = lm.slice();
+    for (const [a, b] of BONES) pts.push({ x: (lm[a].x + lm[b].x) / 2, y: (lm[a].y + lm[b].y) / 2 });
+    const palm = [0, 5, 9, 13, 17].reduce((s, i) => ({ x: s.x + lm[i].x / 5, y: s.y + lm[i].y / 5 }), { x: 0, y: 0 });
+    pts.push(palm);
+    return { lm, pts, size: dist(lm[0], lm[9]) };
+  }
+
+  function detectHands() {
+    if (video.readyState < 2 || video.currentTime === lastVideoTime) return;
+    lastVideoTime = video.currentTime;
+    let res;
+    try { res = handLM.detectForVideo(video, performance.now()); } catch (e) { return; }
+    const found = (res && res.landmarks) || [];
+    prevHands = hands;
+    hands = found.map((lms, i) => buildHand(lms, hands.length === found.length ? hands[i] : null));
+    if (prevHands.length !== hands.length) prevHands = hands;
+  }
+
+  // plan B: movimiento
+  const MW = 160, MH = 120;
+  const mCanvas = document.createElement('canvas'); mCanvas.width = MW; mCanvas.height = MH;
+  const mCtx = mCanvas.getContext('2d', { willReadFrequently: true });
+  let lastData = null;
+  const motionMask = new Uint8Array(MW * MH);
+
+  function detectMotion() {
+    if (video.readyState < 2) return;
+    mCtx.drawImage(video, 0, 0, MW, MH);
+    const d = mCtx.getImageData(0, 0, MW, MH).data;
+    if (lastData) {
+      for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+        const diff = Math.abs(d[i] - lastData[i]) + Math.abs(d[i+1] - lastData[i+1]) + Math.abs(d[i+2] - lastData[i+2]);
+        motionMask[p] = diff > 60 ? 1 : 0;
+      }
+    }
+    lastData = new Uint8ClampedArray(d);
+  }
+  function motionInCircle(cx, cy, r) {
+    const a = toNorm(cx, cy);
+    const mx = a.nx * MW, my = a.ny * MH, mr = (r / map.dw) * MW;
+    let n = 0, total = 0;
+    for (let y = Math.max(0, Math.floor(my - mr)); y <= Math.min(MH - 1, Math.ceil(my + mr)); y++)
+      for (let x = Math.max(0, Math.floor(mx - mr)); x <= Math.min(MW - 1, Math.ceil(mx + mr)); x++) {
+        if (Math.hypot(x - mx, y - my) <= mr) { total++; n += motionMask[y * MW + x]; }
+      }
+    return total > 0 && n / total > 0.22 && n > 8;
+  }
+
+  function spawnDoll() {
+    const s = 0.9 + Math.random() * 0.5;
+    dolls.push({
+      x: 50 + Math.random() * (W - 100), y: -80,
+      vx: (Math.random() - 0.5) * 1.6, vy: 1.8 + Math.random() * 1.8,
+      rot: (Math.random() - 0.5) * 0.6, vr: (Math.random() - 0.5) * 0.03,
+      s, hue: Math.floor(Math.random() * 360), t: Math.random() * 6
+    });
+  }
+  function dollCircles(d) {
+    const c = Math.cos(d.rot), n = Math.sin(d.rot), s = d.s;
+    const at = (ox, oy) => ({ x: d.x + (ox * c - oy * n) * s, y: d.y + (ox * n + oy * c) * s });
+    return [ { ...at(0, -30), r: 22 * s }, { ...at(0, 2), r: 26 * s }, { ...at(0, 32), r: 20 * s } ];
+  }
+  function drawDoll(d) {
+    const col = `hsl(${d.hue},80%,60%)`, dark = `hsl(${d.hue},70%,38%)`;
+    ctx.save();
+    ctx.translate(d.x, d.y); ctx.rotate(d.rot); ctx.scale(d.s, d.s);
+    const sw = Math.sin(d.t) * 0.5;
+    ctx.lineCap = 'round'; ctx.strokeStyle = dark; ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(-14, -8); ctx.lineTo(-30, 10 + sw * 18);
+    ctx.moveTo(14, -8);  ctx.lineTo(30, 10 - sw * 18);
+    ctx.moveTo(-8, 22);  ctx.lineTo(-14, 46 + sw * 8);
+    ctx.moveTo(8, 22);   ctx.lineTo(14, 46 - sw * 8);
+    ctx.stroke();
+    ctx.fillStyle = col;
+    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(-18, -12, 36, 40, 12); else ctx.rect(-18, -12, 36, 40); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -30, 20, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-7, -32, 6, 0, 7); ctx.arc(7, -32, 6, 0, 7); ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(-7, -31, 3, 0, 7); ctx.arc(7, -31, 3, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, -24, 6, 0.2, Math.PI - 0.2); ctx.stroke();
+    ctx.restore();
+  }
+  function distPointSeg(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    let t = l2 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+  function isHit(d) {
+    const circles = dollCircles(d);
+    const extra = +sensEl.value;
+    if (mode === 'hands') {
+      for (let h = 0; h < hands.length; h++) {
+        const hand = hands[h], prev = prevHands[h] || hand;
+        const cr = Math.max(8, Math.min(34, hand.size * 0.14)) + extra;
+        for (let i = 0; i < hand.pts.length; i++) {
+          const a = hand.pts[i], b = (prev.pts && prev.pts[i]) || a;
+          for (const c of circles) if (distPointSeg(c.x, c.y, b.x, b.y, a.x, a.y) < c.r + cr) return true;
+        }
+      }
+    } else if (mode === 'motion') {
+      for (const c of circles) if (motionInCircle(c.x, c.y, c.r + extra * 0.5)) return true;
+    }
+    for (const p of pointers.values())
+      for (const c of circles)
+        if (distPointSeg(c.x, c.y, p.px, p.py, p.x, p.y) < c.r + 22 + extra * 0.5) return true;
+    return false;
+  }
+  function breakDoll(d) {
+    for (const c of dollCircles(d))
+      for (let i = 0; i < 9; i++)
+        particles.push({ x: c.x, y: c.y, vx: (Math.random() - 0.5) * 12, vy: (Math.random() - 0.5) * 12 - 2,
+          size: Math.random() * 7 + 3, color: `hsl(${d.hue},80%,60%)`, life: 1 });
+    const now = performance.now();
+    combo = now - lastHitAt < 1500 ? combo + 1 : 1;
+    lastHitAt = now;
+    const pts = 100 * Math.min(combo, 5);
+    score += pts; scoreEl.textContent = score;
+    popups.push({ x: d.x, y: d.y, text: '+' + pts, life: 1 });
+    comboEl.style.display = combo > 1 ? 'block' : 'none';
+    comboEl.textContent = 'Combo x' + Math.min(combo, 5);
+    pop(280 + Math.min(combo, 5) * 40);
+  }
+  function drawHands() {
+    for (const hand of hands) {
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(0,255,204,.75)'; ctx.lineWidth = 4;
+      ctx.beginPath();
+      for (const [a, b] of BONES) { ctx.moveTo(hand.lm[a].x, hand.lm[a].y); ctx.lineTo(hand.lm[b].x, hand.lm[b].y); }
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      for (const i of TIPS) { ctx.beginPath(); ctx.arc(hand.lm[i].x, hand.lm[i].y, 7, 0, 7); ctx.fill(); }
+    }
+    for (const p of pointers.values()) {
+      ctx.fillStyle = 'rgba(0,255,204,.5)'; ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, 7); ctx.fill();
+    }
+  }
+  function dollsStep(t) {
+    if (mode === 'hands') detectHands(); else detectMotion();
+    if (t >= nextSpawnAt) {
+      spawnDoll();
+      nextSpawnAt = t + Math.max(550, 1500 - ((t - startedAt) / 1000) * 12);
+    }
+    for (let i = dolls.length - 1; i >= 0; i--) {
+      const d = dolls[i];
+      d.x += d.vx; d.y += d.vy; d.rot += d.vr; d.t += 0.12;
+      if (d.x < 30 || d.x > W - 30) d.vx *= -1;
+      if (isHit(d)) { breakDoll(d); dolls.splice(i, 1); continue; }
+      drawDoll(d);
+      if (d.y > H + 90) dolls.splice(i, 1);
+    }
+    drawHands();
+    if (performance.now() - lastHitAt > 1500 && combo) { combo = 0; comboEl.style.display = 'none'; }
+    statusEl.textContent = mode === 'hands'
+      ? (hands.length ? `🖐 ${hands.length} mano${hands.length > 1 ? 's' : ''} detectada${hands.length > 1 ? 's' : ''}` : '🖐 Enseña la mano a la cámara')
+      : 'Modo movimiento (sin detector de manos)';
+  }
+
+  // =====================================================================
+  //  JUEGO 2: LA SILUETA (cuerpo)
+  // =====================================================================
+  // Posturas por ángulos: 0° = hacia abajo, 90° = horizontal hacia fuera, 180° = hacia arriba.
+  // L / R = lado izquierdo / derecho de la PANTALLA (la imagen va en espejo).
+  const POSES = [
+    { name: 'Brazos en cruz',          a: { L: [90, 90],   R: [90, 90] },   l: { L: [7, 7],   R: [7, 7] } },
+    { name: '¡Brazos arriba!',         a: { L: [155, 160], R: [155, 160] }, l: { L: [7, 7],   R: [7, 7] } },
+    { name: 'Un brazo arriba',         a: { L: [160, 165], R: [15, 10] },   l: { L: [7, 7],   R: [7, 7] } },
+    { name: 'El otro brazo arriba',    a: { L: [15, 10],   R: [160, 165] }, l: { L: [7, 7],   R: [7, 7] } },
+    { name: 'Estrella ⭐',              a: { L: [135, 135], R: [135, 135] }, l: { L: [25, 25], R: [25, 25] } },
+    { name: 'Codos doblados',          a: { L: [90, 180],  R: [90, 180] },  l: { L: [7, 7],   R: [7, 7] } },
+    { name: 'Firmes como un soldado',  a: { L: [12, 8],    R: [12, 8] },    l: { L: [4, 4],   R: [4, 4] } },
+    { name: 'Levanta una pierna',      a: { L: [90, 90],   R: [90, 90] },   l: { L: [50, 50], R: [6, 6] },  hardOnly: true },
+    { name: 'Levanta la otra pierna',  a: { L: [90, 90],   R: [90, 90] },   l: { L: [6, 6],   R: [50, 50] }, hardOnly: true }
+  ];
+  // landmarks de MediaPipe Pose. Imagen en espejo: lado izquierdo de pantalla = lado derecho del cuerpo
+  const LM = {
+    L: { sh: 12, el: 14, wr: 16, hp: 24, kn: 26, an: 28 },
+    R: { sh: 11, el: 13, wr: 15, hp: 23, kn: 25, an: 27 }
+  };
+  const POSE_IDS = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+  const USER_BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+
+  const pose = { idx: 0, level: 'easy', user: {}, has: false, hold: 0, successUntil: 0, lastT: 0, frac: 0 };
+  const HOLD_MS = 600, SUCCESS_MS = 1900;
+
+  const unitT = () => Math.min(0.23 * H, 0.27 * W);   // "torso" en píxeles
+
+  function buildTarget(p) {
+    const T = unitT(), ox = W / 2, oy = H / 2;
+    const P = (x, y) => ({ x: ox + x * T, y: oy + y * T });
+    const dir = (deg, side) => { const r = deg * Math.PI / 180; return { x: side * Math.sin(r), y: Math.cos(r) }; };
+    const pts = {};
+    for (const s of ['L', 'R']) {
+      const sd = s === 'L' ? -1 : 1;
+      const sh = P(sd * 0.42, -1), hp = P(sd * 0.22, 0);
+      const step = (from, deg, len) => { const d = dir(deg, sd); return { x: from.x + d.x * len * T, y: from.y + d.y * len * T }; };
+      const el = step(sh, p.a[s][0], 0.62), wr = step(el, p.a[s][1], 0.55);
+      const kn = step(hp, p.l[s][0], 0.85), an = step(kn, p.l[s][1], 0.85);
+      pts[s] = { sh, el, wr, hp, kn, an };
+    }
+    return { T, pts, head: P(0, -1.6), neck: P(0, -1.05) };
+  }
+
+  function evalMatch(tg) {
+    const hard = pose.level === 'hard';
+    const keys = hard ? ['sh', 'el', 'wr', 'hp', 'kn', 'an'] : ['sh', 'el', 'wr'];
+    const tol = tg.T * (0.42 + 0.014 * (+sensEl.value));
+    let ok = 0, total = 0, vis = 0; const flags = {};
+    for (const s of ['L', 'R']) for (const k of keys) {
+      total++;
+      const u = pose.user[LM[s][k]], t = tg.pts[s][k];
+      const seen = u && u.v > 0.3;
+      if (seen) vis++;
+      const m = !!(seen && Math.hypot(u.x - t.x, u.y - t.y) < tol);
+      flags[s + k] = m; if (m) ok++;
+    }
+    return { ok, total, vis, flags, keys, tol };
+  }
+
+  function drawSilhouette(tg, color) {
+    const hard = pose.level === 'hard', g = silCtx, T = tg.T;
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = g.strokeStyle = color;
+    g.lineCap = g.lineJoin = 'round';
+    g.lineWidth = 0.30 * T;
+    const limb = (a, b) => { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); };
+    for (const s of ['L', 'R']) {
+      const q = tg.pts[s];
+      limb(q.sh, q.el); limb(q.el, q.wr);
+      if (hard) { limb(q.hp, q.kn); limb(q.kn, q.an); }
+    }
+    const L = tg.pts.L, R = tg.pts.R;
+    g.beginPath(); g.moveTo(L.sh.x, L.sh.y); g.lineTo(R.sh.x, R.sh.y); g.lineTo(R.hp.x, R.hp.y); g.lineTo(L.hp.x, L.hp.y); g.closePath();
+    g.fill(); g.lineWidth = 0.14 * T; g.stroke();
+    g.lineWidth = 0.22 * T; g.beginPath(); g.moveTo(tg.neck.x, tg.neck.y); g.lineTo(tg.head.x, tg.head.y + 0.1 * T); g.stroke();
+    g.beginPath(); g.arc(tg.head.x, tg.head.y, 0.32 * T, 0, 7); g.fill();
+    for (const s of ['L', 'R']) { g.beginPath(); g.arc(tg.pts[s].wr.x, tg.pts[s].wr.y, 0.2 * T, 0, 7); g.fill();
+      if (hard) { g.beginPath(); g.arc(tg.pts[s].an.x, tg.pts[s].an.y, 0.2 * T, 0, 7); g.fill(); } }
+  }
+
+  function nextPose() {
+    const hard = pose.level === 'hard';
+    const pool = POSES.filter(p => hard || !p.hardOnly);
+    const cur = pool.indexOf(POSES[pose.idx]);
+    const r = Math.floor(Math.random() * (pool.length - 1));
+    const pick = cur < 0 ? pool[Math.floor(Math.random() * pool.length)] : pool[(cur + 1 + r) % pool.length];
+    pose.idx = POSES.indexOf(pick);
+    pose.hold = 0; pose.successUntil = 0;
+  }
+
+  function detectPose() {
+    if (video.readyState < 2 || video.currentTime === lastVideoTime) return;
+    lastVideoTime = video.currentTime;
+    let res;
+    try { res = poseLM.detectForVideo(video, performance.now()); } catch (e) { return; }
+    const l = res && res.landmarks && res.landmarks[0];
+    if (!l || l.length < 29) { pose.has = false; pose.user = {}; return; }
+    pose.has = true;
+    const A = 0.6;
+    for (const id of POSE_IDS) {
+      const s = toScreen(l[id].x, l[id].y), o = pose.user[id];
+      pose.user[id] = { x: o ? o.x + (s.x - o.x) * A : s.x, y: o ? o.y + (s.y - o.y) * A : s.y,
+                        v: l[id].visibility == null ? 1 : l[id].visibility };
+    }
+  }
+
+  function outlinedText(text, x, y, size, color) {
+    ctx.font = `bold ${size}px 'Segoe UI', sans-serif`; ctx.textAlign = 'center';
+    ctx.lineWidth = Math.max(4, size / 6); ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y); ctx.fillStyle = color; ctx.fillText(text, x, y);
+  }
+
+  function poseStep(t) {
+    const dt = Math.min(100, pose.lastT ? t - pose.lastT : 16); pose.lastT = t;
+    detectPose();
+    const p = POSES[pose.idx], tg = buildTarget(p);
+    const T = tg.T;
+
+    // esqueleto del jugador
+    ctx.lineCap = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,255,255,.85)';
+    ctx.beginPath();
+    for (const [a, b] of USER_BONES) {
+      const A = pose.user[a], B = pose.user[b];
+      if (A && B && A.v > 0.3 && B.v > 0.3) { ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); }
+    }
+    ctx.stroke();
+
+    const celebrating = t < pose.successUntil;
+    let m = null;
+    if (!celebrating) {
+      m = evalMatch(tg);
+      pose.frac = m.total ? m.ok / m.total : 0;
+      if (m.ok === m.total) pose.hold += dt; else pose.hold = Math.max(0, pose.hold - dt * 2);
+      if (pose.hold >= HOLD_MS) {                         // ¡conseguido!
+        pose.successUntil = t + SUCCESS_MS;
+        score += 100; scoreEl.textContent = score;
+        fanfare();
+        for (let i = 0; i < 90; i++) particles.push({
+          x: Math.random() * W, y: H * 0.2 + Math.random() * H * 0.2, vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8,
+          size: Math.random() * 7 + 4, color: `hsl(${Math.random() * 360},90%,60%)`, life: 1.4 });
+      }
+    }
+    const done = t < pose.successUntil;
+
+    // silueta
+    const pulse = 0.5 + 0.5 * Math.sin(t / 120);
+    let color, alpha, blur;
+    if (done) { color = '#ffe45c'; alpha = 0.85; blur = 50 + 50 * pulse; }
+    else if (m && m.ok === m.total) { color = '#3dff7a'; alpha = 0.75; blur = 45 + 25 * pulse; }
+    else { color = `hsl(${Math.round(pose.frac * 110)},90%,58%)`; alpha = 0.42; blur = 8; }
+    drawSilhouette(tg, color);
+    ctx.save();
+    ctx.globalAlpha = alpha; ctx.shadowColor = color; ctx.shadowBlur = blur;
+    ctx.drawImage(sil, 0, 0, W, H);
+    if (done || (m && m.ok === m.total)) { ctx.globalAlpha = alpha * 0.8; ctx.drawImage(sil, 0, 0, W, H); }
+    ctx.restore();
+
+    // marcas en manos / pies: se ponen verdes al acertar
+    if (m) {
+      for (const s of ['L', 'R']) for (const k of m.keys) {
+        if (k === 'sh' || k === 'hp') continue;
+        const q = tg.pts[s][k], hit = m.flags[s + k];
+        ctx.beginPath(); ctx.arc(q.x, q.y, (k === 'wr' || k === 'an' ? 0.17 : 0.11) * T, 0, 7);
+        if (hit) { ctx.fillStyle = 'rgba(61,255,122,.9)'; ctx.fill(); }
+        ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.setLineDash(hit ? [] : [6, 5]); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+
+    // textos y barra
+    outlinedText(done ? '¡Muy bien! 🎉' : p.name, W / 2, Math.max(78, H * 0.12), Math.min(36, Math.max(22, W / 18)), done ? '#ffe45c' : '#fff');
+    if (!done) {
+      const bw = Math.min(320, W * 0.5), bx = (W - bw) / 2, by = H - 84;
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(bx, by, bw, 10);
+      ctx.fillStyle = '#3dff7a'; ctx.fillRect(bx, by, bw * Math.min(1, pose.hold / HOLD_MS), 10);
+    }
+    if (done && t >= pose.successUntil - 16) nextPose();   // pasa a la siguiente al acabar
+    if (!done && pose.successUntil && t >= pose.successUntil) nextPose();
+
+    statusEl.textContent = !pose.has ? '🧍 Colócate delante de la cámara'
+      : (m && m.vis < m.total * 0.5 ? '↔ Aléjate para que se te vea entero' : (m ? `✅ ${m.ok}/${m.total} partes bien` : '🎉'));
+  }
+
+  // =====================================================================
+  //  BUCLE COMÚN
+  // =====================================================================
+  function drawVideo() {
+    ctx.save();
+    ctx.translate(W, 0); ctx.scale(-1, 1);
+    if (video.videoWidth) { updateMap(); ctx.drawImage(video, map.ox, map.oy, map.dw, map.dh); }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(0, 0, W, H);
+  }
+
+  function loop(t, id) {
+    if (!running || id !== loopId) return;
+    drawVideo();
+    if (game === 'dolls') dollsStep(t); else poseStep(t);
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.life -= 0.03;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      ctx.globalAlpha = Math.min(1, p.life); ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const p = popups[i];
+      p.y -= 1.2; p.life -= 0.02;
+      if (p.life <= 0) { popups.splice(i, 1); continue; }
+      ctx.globalAlpha = p.life; ctx.fillStyle = '#ffd54a'; ctx.font = 'bold 26px Segoe UI, sans-serif';
+      ctx.textAlign = 'center'; ctx.fillText(p.text, p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(t2 => loop(t2, id));
+  }
+
+  // ---------- táctil / ratón ----------
+  canvas.addEventListener('pointerdown', e => pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY }));
+  canvas.addEventListener('pointermove', e => {
+    const p = pointers.get(e.pointerId);
+    if (p) { p.px = p.x; p.py = p.y; p.x = e.clientX; p.y = e.clientY; }
+  });
+  const endPtr = e => pointers.delete(e.pointerId);
+  canvas.addEventListener('pointerup', endPtr);
+  canvas.addEventListener('pointercancel', endPtr);
+  canvas.addEventListener('pointerleave', endPtr);
+
+  resize();
+})();
+</script>
+</body>
+</html>
