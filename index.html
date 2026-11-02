@@ -24,7 +24,6 @@
   #btn-fs { background: linear-gradient(135deg,#ff007f,#7928ca); }
   #btn-menu { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3); }
 
-  .bottom { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 10; display: flex; justify-content: center; gap: 10px; }
   .sens { background: rgba(0,0,0,.6); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.2);
     border-radius: 18px; padding: 8px 16px; display: flex; align-items: center; gap: 10px; font-size: .85rem; }
   .sens input { width: 130px; accent-color: #00ffcc; touch-action: auto; }
@@ -45,6 +44,9 @@
   #msg { margin-top: 6px; color: #ff8a8a; max-width: 440px; }
   .tip { color: #8a8fa3; font-size: .85rem; max-width: 440px; line-height: 1.4; }
   #version { margin-top: 14px; color: #5f6478; font-size: .75rem; }
+  #mstats { margin-top: 6px; display: none; }
+  #result { display: none; font-size: 1.3rem; font-weight: bold; color: #ffd54a; margin-bottom: 16px; line-height: 1.4; }
+  .overlay .sens { margin-bottom: 14px; }
 </style>
 </head>
 <body>
@@ -55,6 +57,7 @@
   <div class="hud">
     <div>
       <div class="pill">Puntos: <span id="score">0</span></div><br>
+      <div class="pill" id="mstats"></div>
       <div class="pill" id="combo">Combo x2</div>
       <div class="pill" id="status">Cargando…</div>
     </div>
@@ -64,22 +67,29 @@
     </div>
   </div>
 
-  <div class="bottom">
-    <label class="sens"><span>Sensibilidad</span>
-      <input type="range" id="sens" min="0" max="40" value="14" />
-    </label>
-  </div>
-
   <div class="overlay" id="start">
     <h1>Juegos de Movimiento</h1>
+    <div id="result"></div>
 
     <div class="game-card">
       <h2>🖐 Rompe Muñecos</h2>
       <small>Mano abierta: rompes los muñecos que caen. Puño cerrado: ¡rebotan!</small>
-      <button class="btn-start">Jugar</button>
+      <button class="btn-start" data-game="dolls">Jugar</button>
     </div>
 
-    <div class="tip">Buena luz y la mano bien visible delante de la cámara.</div>
+    <div class="game-card">
+      <h2>🔨 Machaca Topos</h2>
+      <small>Salen topos por los bordes de la pantalla: machácalos con las manos (los de abajo, también con los pies).
+        Los dorados valen más. ¡Ojo con las bombas! 60 segundos, 3 vidas. Se puede jugar de 2.
+        Ponte a 2–3 m para que se te vea entero.</small>
+      <button class="btn-start" data-game="moles">Jugar</button>
+    </div>
+
+    <label class="sens"><span>Sensibilidad</span>
+      <input type="range" id="sens" min="0" max="40" value="14" />
+    </label>
+
+    <div class="tip">Buena luz y el cuerpo (o la mano) bien visible delante de la cámara.</div>
     <div id="msg"></div>
     <div id="version"></div>
   </div>
@@ -88,11 +98,12 @@
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '1.1', APP_DATE = '1 nov 2026';
+  const APP_VERSION = '1.2', APP_DATE = '2 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
   const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+  const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
   const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
                  [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
@@ -106,8 +117,9 @@
 
   let W = 0, H = 0;
   let running = false, loopId = 0;
-  let mode = 'none';              // 'hands' | 'motion'
-  let handLM = null;
+  let game = 'dolls';             // 'dolls' | 'moles'
+  let mode = 'none';              // 'hands' | 'pose' | 'motion'
+  let handLM = null, poseLM = null;
   let mpModule = null, mpFileset = null;
   let lastVideoTime = -1;
 
@@ -139,6 +151,7 @@
     canvas.width = W * dpr; canvas.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     updateMap();
+    if (game === 'moles') layoutHoles();
   }
   function updateMap() {
     const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
@@ -166,12 +179,12 @@
   document.addEventListener('webkitfullscreenchange', resize);
 
   // ---------- menú / arranque ----------
-  document.querySelectorAll('.btn-start').forEach(b => b.addEventListener('click', startGame));
+  document.querySelectorAll('.btn-start').forEach(b => b.addEventListener('click', () => startGame(b.dataset.game)));
   $('btn-menu').addEventListener('click', showMenu);
 
   function showMenu() {
     running = false; loopId++;
-    dolls = []; particles = []; popups = []; hands = []; prevHands = [];
+    dolls = []; particles = []; popups = []; hands = []; prevHands = []; holes = []; poses = [];
     $('start').style.display = 'flex';
     document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
   }
@@ -200,9 +213,11 @@
     catch (e) { return await Cls.createFromOptions(mpFileset, opts('CPU')); }
   }
 
-  async function startGame() {
+  async function startGame(which) {
+    game = which === 'moles' ? 'moles' : 'dolls';
     const msg = $('msg');
     msg.textContent = '';
+    $('result').style.display = 'none';
     document.querySelectorAll('.btn-start').forEach(b => b.disabled = true);
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -222,9 +237,15 @@
 
     try {
       await loadMP();
-      if (!handLM) handLM = await makeLandmarker(mpModule.HandLandmarker, HAND_MODEL, {
-        numHands: 2, minHandDetectionConfidence: 0.35, minHandPresenceConfidence: 0.35, minTrackingConfidence: 0.35 });
-      mode = 'hands';
+      if (game === 'moles') {
+        if (!poseLM) poseLM = await makeLandmarker(mpModule.PoseLandmarker, POSE_MODEL, {
+          numPoses: 2, minPoseDetectionConfidence: 0.4, minPosePresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
+        mode = 'pose';
+      } else {
+        if (!handLM) handLM = await makeLandmarker(mpModule.HandLandmarker, HAND_MODEL, {
+          numHands: 2, minHandDetectionConfidence: 0.35, minHandPresenceConfidence: 0.35, minTrackingConfidence: 0.35 });
+        mode = 'hands';
+      }
     } catch (err) {
       console.warn('No se pudo cargar el detector', err);
       mode = 'motion';
@@ -232,9 +253,11 @@
 
     // reinicio de estado
     score = 0; combo = 0; scoreEl.textContent = 0; comboEl.style.display = 'none';
-    dolls = []; particles = []; popups = []; hands = []; prevHands = [];
-    lastVideoTime = -1;
+    dolls = []; particles = []; popups = []; hands = []; prevHands = []; poses = [];
+    lastVideoTime = -1; lastData = null;
     startedAt = performance.now();
+    $('mstats').style.display = game === 'moles' ? 'inline-block' : 'none';
+    if (game === 'moles') resetMoles(startedAt);
     nextSpawnAt = startedAt + 800;
     running = true;
     const id = ++loopId;
@@ -463,6 +486,309 @@
   }
 
   // =====================================================================
+  //  JUEGO 2: MACHACA TOPOS (cuerpo entero con PoseLandmarker)
+  // =====================================================================
+  const ROUND_MS = 60000, MAX_LIVES = 3;
+  // landmarks de pose: mano = muñeca + meñique + índice; pie = talón + punta
+  const HITTERS = [
+    { kind: 'hand', idx: [15, 17, 19] }, { kind: 'hand', idx: [16, 18, 20] },
+    { kind: 'foot', idx: [29, 31] },     { kind: 'foot', idx: [30, 32] }
+  ];
+  let holes = [], poses = [], R = 40;
+  let lives = MAX_LIVES, flashUntil = 0, lastStatsText = '', lastHole = -1;
+
+  function layoutHoles() {
+    R = Math.max(26, Math.min(62, Math.min(W, H) * 0.085));
+    const inset = R * 0.8, old = holes;
+    const mk = (x, y, a) => ({ x, y, a, mole: null });
+    const list = [];
+    if (W >= H) {   // apaisado (lo normal en pantalla completa)
+      const top = W >= 700 ? [0.36, 0.5, 0.64] : [0.4, 0.6];
+      const bottom = W >= 700 ? [0.12, 0.31, 0.5, 0.69, 0.88] : [0.15, 0.38, 0.62, 0.85];
+      top.forEach(f => list.push(mk(W * f, inset, Math.PI)));
+      bottom.forEach(f => list.push(mk(W * f, H - inset, 0)));
+      [0.48, 0.74].forEach(f => { list.push(mk(inset, H * f, Math.PI / 2)); list.push(mk(W - inset, H * f, -Math.PI / 2)); });
+    } else {        // vertical
+      list.push(mk(W * 0.5, inset, Math.PI));
+      [0.2, 0.5, 0.8].forEach(f => list.push(mk(W * f, H - inset, 0)));
+      [0.36, 0.56, 0.76].forEach(f => { list.push(mk(inset, H * f, Math.PI / 2)); list.push(mk(W - inset, H * f, -Math.PI / 2)); });
+    }
+    // si sólo cambia el tamaño, conserva los topos que estaban fuera
+    if (old.length === list.length) list.forEach((h, i) => h.mole = old[i].mole);
+    holes = list;
+  }
+
+  function resetMoles(now) {
+    lives = MAX_LIVES; flashUntil = 0; lastStatsText = ''; lastHole = -1;
+    holes = []; layoutHoles();
+    nextSpawnAt = now + 1200;
+  }
+
+  // de coordenadas locales del agujero (−y = hacia el centro de la pantalla) a pantalla
+  function holeToScreen(h, lx, ly) {
+    const c = Math.cos(h.a), s = Math.sin(h.a);
+    return { x: h.x + lx * c - ly * s, y: h.y + lx * s + ly * c };
+  }
+  const RISE_MS = 170;
+  function moleRise(m, now) {
+    if (m.state === 'hit') return 1;
+    if (now < m.t0 + RISE_MS) return (now - m.t0) / RISE_MS;
+    if (now < m.upUntil) return 1;
+    return Math.max(0, 1 - (now - m.upUntil) / RISE_MS);
+  }
+  const headY = rise => R * 0.9 - rise * R * 1.9;
+  function moleTarget(h, rise) {
+    const p = holeToScreen(h, 0, headY(rise) + R * 0.35);
+    return { x: p.x, y: p.y, r: R * 1.05 };
+  }
+
+  function spawnMole(now) {
+    const e = (now - startedAt) / 1000;
+    const players = Math.max(1, Math.min(2, poses.length));
+    const maxActive = Math.min(4, 1 + Math.floor(e / 15) + (players - 1));
+    const active = holes.filter(h => h.mole && h.mole.type !== 'bomb').length;
+    if (active >= maxActive) return;
+    const free = holes.map((h, i) => i).filter(i => !holes[i].mole && i !== lastHole);
+    if (!free.length) return;
+    const i = free[Math.floor(Math.random() * free.length)];
+    lastHole = i;
+    const r = Math.random();
+    const type = e > 8 && r < 0.13 ? 'bomb' : r > 0.92 ? 'gold' : 'mole';
+    const stay = Math.max(750, 1700 - e * 15) * (type === 'gold' ? 0.75 : 1);
+    holes[i].mole = { type, state: 'up', t0: now, upUntil: now + RISE_MS + stay, spin: Math.random() * 6 };
+  }
+
+  // ---- detección de pose ----
+  function poseCenter(lms) {
+    return [11, 12, 23, 24].reduce((s, i) => {
+      const p = toScreen(lms[i].x, lms[i].y);
+      return { x: s.x + p.x / 4, y: s.y + p.y / 4 };
+    }, { x: 0, y: 0 });
+  }
+  function detectPoses() {
+    if (video.readyState < 2 || video.currentTime === lastVideoTime) return;
+    lastVideoTime = video.currentTime;
+    let res;
+    try { res = poseLM.detectForVideo(video, performance.now()); } catch (e) { return; }
+    const found = (res && res.landmarks) || [];
+    // empareja con las personas del fotograma anterior (por cercanía del torso)
+    const centers = found.map(poseCenter), pairs = [];
+    centers.forEach((c, i) => poses.forEach((p, j) => pairs.push({ i, j, d: dist(c, p.center) })));
+    pairs.sort((a, b) => a.d - b.d);
+    const match = new Array(found.length).fill(null), used = new Set();
+    for (const { i, j, d } of pairs)
+      if (match[i] === null && !used.has(j) && d < Math.max(150, poses[j].scale * 3)) { match[i] = poses[j]; used.add(j); }
+
+    poses = found.map((lms, i) => {
+      const prev = match[i];
+      const scale = Math.max(30, dist(toScreen(lms[11].x, lms[11].y), toScreen(lms[12].x, lms[12].y)));
+      const hitters = HITTERS.map((def, k) => {
+        const vis = Math.min(...def.idx.map(j => lms[j].visibility ?? 1));
+        let x = 0, y = 0;
+        for (const j of def.idx) { const p = toScreen(lms[j].x, lms[j].y); x += p.x / def.idx.length; y += p.y / def.idx.length; }
+        const old = prev && prev.hitters[k];
+        const ok = vis > (def.kind === 'hand' ? 0.3 : 0.45);
+        if (old && old.ok && ok) { x = old.x + (x - old.x) * 0.75; y = old.y + (y - old.y) * 0.75; }
+        return { kind: def.kind, x, y, ok, px: old && old.ok ? old.x : x, py: old && old.ok ? old.y : y };
+      });
+      return { center: centers[i], scale, hitters };
+    });
+  }
+
+  // ¿algún golpe sobre este objetivo? Exige que la mano/pie ENTRE o se mueva:
+  // dejar la mano quieta encima de un agujero no vale.
+  function moleHit(tg) {
+    const extra = +sensEl.value;
+    if (mode === 'pose') {
+      for (const p of poses) {
+        const hr = Math.max(14, Math.min(45, p.scale * 0.28)) + extra;
+        for (const h of p.hitters) {
+          if (!h.ok) continue;
+          const lim = tg.r + hr;
+          if (distPointSeg(tg.x, tg.y, h.px, h.py, h.x, h.y) >= lim) continue;
+          const speed = Math.hypot(h.x - h.px, h.y - h.py);
+          if (Math.hypot(h.px - tg.x, h.py - tg.y) >= lim || speed > 3) return h;
+        }
+      }
+    } else if (mode === 'motion') {
+      if (motionInCircle(tg.x, tg.y, tg.r * 0.8 + extra * 0.5)) return { x: tg.x, y: tg.y };
+    }
+    for (const p of pointers.values())
+      if (Math.hypot(p.x - tg.x, p.y - tg.y) < tg.r + 22 + extra * 0.5) return p;
+    return null;
+  }
+
+  function whack(h, now) {
+    const m = h.mole, tg = moleTarget(h, 1);
+    m.state = 'hit'; m.t0 = now;
+    if (m.type === 'bomb') {
+      lives--; flashUntil = now + 350;
+      for (let i = 0; i < 30; i++) particles.push({ x: tg.x, y: tg.y, vx: (Math.random() - 0.5) * 16, vy: (Math.random() - 0.5) * 16,
+        size: 3 + Math.random() * 7, color: i % 2 ? '#ff6a00' : '#ffd54a', life: 1 });
+      popups.push({ x: tg.x, y: tg.y, text: '💥 -1 ❤', life: 1 });
+      pop(90);
+      return;
+    }
+    const pts = m.type === 'gold' ? 50 : 10;
+    score += pts; scoreEl.textContent = score;
+    popups.push({ x: tg.x, y: tg.y, text: '+' + pts, life: 1 });
+    const col = m.type === 'gold' ? '#ffe066' : '#c58a52';
+    for (let i = 0; i < 14; i++) particles.push({ x: tg.x, y: tg.y, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10 - 2,
+      size: 2 + Math.random() * 5, color: i % 3 ? col : '#fff6a0', life: 0.9 });
+    pop(m.type === 'gold' ? 520 : 330);
+  }
+
+  // ---- dibujo ----
+  function drawHoleBack(h) {
+    ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.a);
+    ctx.fillStyle = '#1a0e05';
+    ctx.beginPath(); ctx.ellipse(0, 0, R * 1.15, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#7a4a22'; ctx.lineWidth = R * 0.16;
+    ctx.beginPath(); ctx.ellipse(0, 0, R * 1.15, R * 0.4, 0, Math.PI, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+  function drawHoleFront(h) {
+    ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.a);
+    ctx.strokeStyle = '#a8692f'; ctx.lineWidth = R * 0.2;
+    ctx.beginPath(); ctx.ellipse(0, 0, R * 1.15, R * 0.4, 0, 0, Math.PI); ctx.stroke();
+    ctx.restore();
+  }
+  function drawMole(h, now) {
+    const m = h.mole, rise = moleRise(m, now), cy = headY(rise);
+    ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.a);
+    ctx.beginPath(); ctx.rect(-R * 2, -R * 4, R * 4, R * 4); ctx.clip();   // sólo se ve lo que sale del agujero
+    const hit = m.state === 'hit';
+    if (hit) { const k = Math.min(1, (now - m.t0) / 120); ctx.translate(0, cy); ctx.scale(1 + 0.18 * k, 1 - 0.3 * k); ctx.translate(0, -cy); }
+
+    if (m.type === 'bomb') {
+      if (!hit) {
+        ctx.fillStyle = '#222';
+        ctx.beginPath(); ctx.arc(0, cy + R * 0.1, R * 0.78, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.arc(-R * 0.28, cy - R * 0.18, R * 0.2, 0, 7); ctx.fill();
+        ctx.strokeStyle = '#8b6b3e'; ctx.lineWidth = R * 0.1; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(R * 0.3, cy - R * 0.55); ctx.quadraticCurveTo(R * 0.6, cy - R * 1.0, R * 0.35, cy - R * 1.15); ctx.stroke();
+        ctx.fillStyle = Math.sin(now / 50) > 0 ? '#ffd54a' : '#ff5a00';
+        ctx.beginPath(); ctx.arc(R * 0.35, cy - R * 1.15, R * (0.12 + Math.random() * 0.08), 0, 7); ctx.fill();
+        ctx.fillStyle = '#ff3b3b'; ctx.font = `bold ${Math.round(R * 0.8)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('!', 0, cy + R * 0.15);
+      }
+      ctx.restore(); return;
+    }
+
+    const gold = m.type === 'gold';
+    const body = gold ? '#f2c230' : '#8a5a33', dark = gold ? '#b8860b' : '#5e3a1e', belly = gold ? '#fff0a8' : '#d9b08c';
+    ctx.fillStyle = body;
+    ctx.beginPath(); ctx.arc(0, cy, R * 0.8, Math.PI, 0); ctx.lineTo(R * 0.8, cy + R * 2.2); ctx.lineTo(-R * 0.8, cy + R * 2.2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = belly; ctx.beginPath(); ctx.ellipse(0, cy + R * 0.85, R * 0.5, R * 0.6, 0, 0, 7); ctx.fill();
+    // patitas
+    ctx.fillStyle = '#f0a3a3';
+    ctx.beginPath(); ctx.ellipse(-R * 0.62, cy + R * 0.55, R * 0.2, R * 0.14, -0.4, 0, 7); ctx.ellipse(R * 0.62, cy + R * 0.55, R * 0.2, R * 0.14, 0.4, 0, 7); ctx.fill();
+    // ojos
+    if (hit) {
+      ctx.strokeStyle = '#111'; ctx.lineWidth = R * 0.08; ctx.lineCap = 'round';
+      for (const sx of [-1, 1]) {
+        const ex = sx * R * 0.3, ey = cy - R * 0.2, e = R * 0.12;
+        ctx.beginPath(); ctx.moveTo(ex - e, ey - e); ctx.lineTo(ex + e, ey + e); ctx.moveTo(ex + e, ey - e); ctx.lineTo(ex - e, ey + e); ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(-R * 0.3, cy - R * 0.2, R * 0.11, 0, 7); ctx.arc(R * 0.3, cy - R * 0.2, R * 0.11, 0, 7); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-R * 0.27, cy - R * 0.24, R * 0.04, 0, 7); ctx.arc(R * 0.33, cy - R * 0.24, R * 0.04, 0, 7); ctx.fill();
+    }
+    // hocico, nariz y dientes
+    ctx.fillStyle = belly; ctx.beginPath(); ctx.ellipse(0, cy + R * 0.12, R * 0.3, R * 0.2, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ff6f91'; ctx.beginPath(); ctx.ellipse(0, cy + R * 0.02, R * 0.13, R * 0.09, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillRect(-R * 0.1, cy + R * 0.22, R * 0.09, R * 0.14); ctx.fillRect(R * 0.01, cy + R * 0.22, R * 0.09, R * 0.14);
+    ctx.strokeStyle = dark; ctx.lineWidth = 1.5; ctx.strokeRect(-R * 0.1, cy + R * 0.22, R * 0.2, R * 0.14);
+    if (gold && !hit) {   // destellos
+      ctx.fillStyle = '#fff';
+      const a = now / 300 + m.spin;
+      for (let k = 0; k < 3; k++) {
+        const sx = Math.cos(a + k * 2.1) * R * 0.95, sy = cy + Math.sin(a + k * 2.1) * R * 0.6;
+        ctx.beginPath(); ctx.arc(sx, sy, R * 0.06, 0, 7); ctx.fill();
+      }
+    }
+    if (hit) {            // estrellitas girando
+      ctx.fillStyle = '#ffe14d';
+      const a = (now - m.t0) / 90;
+      for (let k = 0; k < 3; k++) {
+        const sx = Math.cos(a + k * 2.1) * R * 0.6, sy = cy - R * 0.85 + Math.sin(a + k * 2.1) * R * 0.15;
+        ctx.beginPath(); ctx.arc(sx, sy, R * 0.09, 0, 7); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+  function drawHitters() {
+    for (const p of poses) {
+      const hr = Math.max(14, Math.min(45, p.scale * 0.28)) + +sensEl.value;
+      for (const h of p.hitters) {
+        if (!h.ok) continue;
+        const g = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, hr);
+        const c = h.kind === 'hand' ? '0,220,255' : '190,120,255';
+        g.addColorStop(0, `rgba(${c},.75)`); g.addColorStop(1, `rgba(${c},0)`);
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(h.x, h.y, hr, 0, 7); ctx.fill();
+      }
+    }
+    for (const p of pointers.values()) {
+      ctx.fillStyle = 'rgba(0,255,204,.5)'; ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, 7); ctx.fill();
+    }
+  }
+
+  function endMoles() {
+    running = false; loopId++;
+    let best = 0;
+    try { best = +localStorage.getItem('topos-best') || 0; if (score > best) { best = score; localStorage.setItem('topos-best', score); } } catch (e) {}
+    const r = $('result');
+    r.innerHTML = `${lives <= 0 ? '💥 ¡Sin vidas!' : '⏱ ¡Tiempo!'} ${score} puntos` + (best ? `<br><small>Récord: ${best}</small>` : '');
+    r.style.display = 'block';
+    holes = []; poses = [];
+    $('start').style.display = 'flex';
+    document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
+  }
+
+  // devuelve false si la partida ha terminado
+  function molesStep(t) {
+    if (mode === 'pose') detectPoses(); else detectMotion();
+    const now = performance.now();
+    if (!holes.length) layoutHoles();
+
+    if (t >= nextSpawnAt) {
+      spawnMole(now);
+      const e = (now - startedAt) / 1000;
+      nextSpawnAt = t + Math.max(380, 950 - e * 10) * (0.7 + Math.random() * 0.6);
+    }
+
+    for (const h of holes) drawHoleBack(h);
+    for (const h of holes) {
+      const m = h.mole;
+      if (!m) continue;
+      const rise = moleRise(m, now);
+      if (m.state === 'hit') {
+        if (now - m.t0 > (m.type === 'bomb' ? 50 : 450)) { h.mole = null; continue; }
+      } else if (rise <= 0 && now > m.upUntil) { h.mole = null; continue; }
+      else if (rise > 0.55) {
+        if (moleHit(moleTarget(h, rise))) whack(h, now);
+      }
+      if (h.mole) drawMole(h, now);
+    }
+    for (const h of holes) drawHoleFront(h);
+    drawHitters();
+
+    if (now < flashUntil) { ctx.fillStyle = `rgba(255,0,0,${0.35 * (flashUntil - now) / 350})`; ctx.fillRect(0, 0, W, H); }
+
+    const left = Math.max(0, Math.ceil((ROUND_MS - (now - startedAt)) / 1000));
+    const txt = `⏱ ${left}s  ${'❤️'.repeat(Math.max(0, lives))}${'🖤'.repeat(MAX_LIVES - Math.max(0, lives))}`;
+    if (txt !== lastStatsText) { $('mstats').textContent = txt; lastStatsText = txt; }
+    statusEl.textContent = mode === 'pose'
+      ? (poses.length ? (poses.length > 1 ? '👥 2 jugadores' : '🙋 ¡Dale a los topos!') : '🧍 Ponte delante, que se te vea entero')
+      : 'Modo movimiento (sin detector de cuerpo)';
+
+    if (lives <= 0 || left <= 0) { endMoles(); return false; }
+    return true;
+  }
+
+  // =====================================================================
   //  BUCLE COMÚN
   // =====================================================================
   function drawVideo() {
@@ -476,7 +802,8 @@
   function loop(t, id) {
     if (!running || id !== loopId) return;
     drawVideo();
-    dollsStep(t);
+    if (game === 'moles') { if (!molesStep(t)) return; }
+    else dollsStep(t);
 
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
