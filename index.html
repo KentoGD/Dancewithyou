@@ -165,7 +165,8 @@
       <h3>Opciones del juego</h3>
       <div class="row" style="justify-content:flex-start">
         <label><input type="checkbox" id="opt-upper" /> MAYÚSCULAS</label>
-        <label><input type="checkbox" id="opt-voice" /> Voz</label>
+        <label><input type="checkbox" id="opt-voice" /> Voz (felicitaciones)</label>
+        <label><input type="checkbox" id="opt-read" /> Leer la palabra en voz alta</label>
       </div>
       <div class="row" style="justify-content:flex-start">
         <label>Dibujos a la vez <select id="opt-count"><option>2</option><option>3</option><option>4</option></select></label>
@@ -184,7 +185,7 @@
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '1.9', APP_DATE = '2 nov 2026';
+  const APP_VERSION = '2.0', APP_DATE = '2 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -1017,12 +1018,12 @@
   ];
   function defaultData() {
     const lists = DEFAULT_LISTS.map(([name, ws]) => ({ id: uid(), name, words: ws.map(([word, emoji]) => ({ id: uid(), word, emoji, img: null })) }));
-    return { lists, current: lists[0].id, opts: { upper: true, voice: true, count: 3, speed: 0.85 } };
+    return { lists, current: lists[0].id, opts: { upper: true, voice: true, readWord: true, count: 3, speed: 0.85 } };
   }
   let LD;
   try { LD = JSON.parse(localStorage.getItem(LEARN_KEY)); } catch (e) {}
   if (!LD || !Array.isArray(LD.lists) || !LD.lists.length) LD = defaultData();
-  LD.opts = Object.assign({ upper: true, voice: true, count: 3, speed: 0.85 }, LD.opts || {});
+  LD.opts = Object.assign({ upper: true, voice: true, readWord: true, count: 3, speed: 0.85 }, LD.opts || {});
   function saveLD() {
     try { localStorage.setItem(LEARN_KEY, JSON.stringify(LD)); return true; }
     catch (e) { return false; }   // normalmente: no queda espacio (demasiadas fotos)
@@ -1084,8 +1085,9 @@
     } catch (e) {}
   }
   try { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {}
-  function say(text) {
-    if (!LD.opts.voice || !window.speechSynthesis) return;
+  // kind 'word' = leer la palabra (botón 🔊/🔇 de la tarjeta); el resto = felicitaciones (opción "Voz")
+  function say(text, kind) {
+    if (!window.speechSynthesis || !(kind === 'word' ? LD.opts.readWord : LD.opts.voice)) return;
     try {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
@@ -1162,6 +1164,21 @@
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     return true;
   }
+  // botón de la tarjeta para que la palabra se lea o no en voz alta (para obligar a leerla)
+  function voiceBtn() {
+    const b = wordBox, r = Math.max(20, Math.min(30, b.h * 0.12));
+    return { x: b.x + 12 + r, y: b.y + b.h - 10 - r, r };
+  }
+  function inVoiceBtn(x, y) { const v = voiceBtn(); return Math.hypot(x - v.x, y - v.y) < v.r + 12; }
+  function toggleReadWord() {
+    LD.opts.readWord = !LD.opts.readWord; saveLD();
+    const v = voiceBtn();
+    if (LD.opts.readWord) { if (learnTarget) say(learnTarget.word, 'word'); }
+    else { try { speechSynthesis.cancel(); } catch (e) {} }
+    const top = wordBox.y > 50;   // el aviso va fuera de la tarjeta (encima o, si no cabe, debajo)
+    popups.push({ x: wordBox.x + wordBox.w / 2, y: top ? wordBox.y - 16 : wordBox.y + wordBox.h + 34,
+                  text: LD.opts.readWord ? '🔊 Leo la palabra' : '🔇 ¡A leer!', life: 1.2 });
+  }
   function learnPointerMove(e) {
     if (!boxDrag || e.pointerId !== boxDrag.id) return false;
     const dx = e.clientX - boxDrag.sx, dy = e.clientY - boxDrag.sy, b0 = boxDrag.b0;
@@ -1176,7 +1193,8 @@
   function learnPointerUp(e) {
     if (!boxDrag || e.pointerId !== boxDrag.id) return false;
     if (boxDrag.moved) saveWordBox();
-    else if (learnTarget) say(learnTarget.word);   // un toque sin arrastrar repite la palabra
+    else if (inVoiceBtn(e.clientX, e.clientY)) toggleReadWord();   // botón 🔊/🔇 de la tarjeta
+    else if (learnTarget) say(learnTarget.word, 'word');   // un toque sin arrastrar repite la palabra
     boxDrag = null;
     return true;
   }
@@ -1213,7 +1231,7 @@
       if (!it.correct || it.scale) it.leaving = true;   // it.scale: el acertado de la ronda anterior
     });
     learnNextSpawn = now + 900;
-    setTimeout(() => { if (running && game === 'learn' && learnTarget === pick) say(pick.word); }, 350);
+    setTimeout(() => { if (running && game === 'learn' && learnTarget === pick && LD.opts.readWord) say(pick.word, 'word'); }, 350);
   }
 
   function learnSpawn(now) {
@@ -1321,11 +1339,13 @@
     ctx.fillStyle = learnPhase === 'win' ? '#0a8f4f' : '#1d1d2b';
     ctx.fillText(txt, 0, 0);
     ctx.restore();
-    // icono de altavoz: tocar la palabra la vuelve a decir
-    if (LD.opts.voice) {
-      ctx.font = `${Math.round(Math.max(16, Math.min(30, b.h * 0.14)))}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-      ctx.fillText('🔊', b.x + 12, b.y + b.h - 8);
-    }
+    // botón 🔊 / 🔇: tocarlo enciende o apaga la lectura de la palabra
+    const v = voiceBtn();
+    ctx.fillStyle = LD.opts.readWord ? '#dff4ff' : '#ffe3e3';
+    ctx.beginPath(); ctx.arc(v.x, v.y, v.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = LD.opts.readWord ? '#66b8e8' : '#e88a8a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.font = `${Math.round(v.r * 1.1)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(LD.opts.readWord ? '🔊' : '🔇', v.x, v.y + 1);
     // asa para cambiar el tamaño (rayitas en la esquina)
     const g = gripSize(), cx = b.x + b.w - 10, cy = b.y + b.h - 10;
     ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
@@ -1499,7 +1519,7 @@
     const editing = list.words.find(w => w.id === editingId);
     $('cfg-addtitle').textContent = editing ? `Cambiar imagen de "${editing.word}"` : 'Añadir palabra';
     $('cfg-cancel').style.display = editing ? 'inline-block' : 'none';
-    $('opt-upper').checked = !!LD.opts.upper; $('opt-voice').checked = !!LD.opts.voice;
+    $('opt-upper').checked = !!LD.opts.upper; $('opt-voice').checked = !!LD.opts.voice; $('opt-read').checked = !!LD.opts.readWord;
     $('opt-count').value = String(LD.opts.count); $('opt-speed').value = String(LD.opts.speed);
   }
   function startEdit(w) {
@@ -1587,6 +1607,7 @@
   });
   $('opt-upper').addEventListener('change', e => { LD.opts.upper = e.target.checked; saveLD(); });
   $('opt-voice').addEventListener('change', e => { LD.opts.voice = e.target.checked; saveLD(); });
+  $('opt-read').addEventListener('change', e => { LD.opts.readWord = e.target.checked; saveLD(); });
   $('opt-count').addEventListener('change', e => { LD.opts.count = +e.target.value; saveLD(); });
   $('opt-speed').addEventListener('change', e => { LD.opts.speed = +e.target.value; saveLD(); });
   $('opt-boxreset').addEventListener('click', () => { delete LD.opts.box; saveLD(); cfgMsg('✔ La palabra vuelve a su tamaño y sitio iniciales.'); });
