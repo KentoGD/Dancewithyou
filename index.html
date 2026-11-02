@@ -184,7 +184,7 @@
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '1.8', APP_DATE = '2 nov 2026';
+  const APP_VERSION = '1.9', APP_DATE = '2 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -1207,7 +1207,11 @@
     if (words.length > 1 && norm(pick.word) === learnLastWord && learnBag.length) { learnBag.unshift(pick); pick = learnBag.pop(); }
     learnTarget = pick; learnLastWord = norm(pick.word);
     learnPhase = 'play'; learnWinItem = null;
-    learnItems.forEach(it => it.leaving = true);
+    // los que quedan en pantalla se van; si alguno ya es el dibujo de la palabra nueva, se queda y vale
+    learnItems.forEach(it => {
+      it.correct = norm(it.entry.word) === learnLastWord;
+      if (!it.correct || it.scale) it.leaving = true;   // it.scale: el acertado de la ronda anterior
+    });
     learnNextSpawn = now + 900;
     setTimeout(() => { if (running && game === 'learn' && learnTarget === pick) say(pick.word); }, 350);
   }
@@ -1402,7 +1406,9 @@
         drawItem(it, now);
         continue;
       }
-      it.alpha += it.leaving ? -0.05 : 0.06;
+      // OJO: con tope en 1; antes crecía sin límite y un dibujo "saliendo" seguía viéndose
+      // (sin poder tocarse) varios segundos al cambiar de palabra
+      it.alpha = Math.min(1, it.alpha + (it.leaving ? -0.08 : 0.06));
       if (it.leaving && it.alpha <= 0) { learnItems.splice(i, 1); continue; }
       // vuelve poco a poco a su caída tranquila después de un rebote
       it.vx += (0 - it.vx) * 0.015; it.vy += (it.base - it.vy) * 0.03;
@@ -1418,7 +1424,7 @@
       if (learnPhase === 'play' && !it.leaving && it.alpha > 0.5) {
         const c = learnTouch(it);
         if (c) {
-          if (it.correct) learnWin(it, now);
+          if (learnTarget && norm(it.entry.word) === norm(learnTarget.word)) learnWin(it, now);
           else if (it.cool <= 0) learnBounce(it, c);
         }
       }
