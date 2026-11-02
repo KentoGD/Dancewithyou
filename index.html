@@ -80,7 +80,7 @@
     <div class="game-card">
       <h2>🔨 Machaca Topos</h2>
       <small>Salen topos por los bordes de la pantalla: machácalos con las manos (los de abajo, también con los pies).
-        Los dorados valen más. ¡Ojo con las bombas! 90 segundos, 3 vidas. Se puede jugar de 2.
+        Los dorados valen más y los del casco necesitan 2 golpes. ¡Ojo con las bombas! 90 segundos, 3 vidas. Se puede jugar de 2.
         Ponte a 2–3 m para que se te vea entero.</small>
       <button class="btn-start" data-game="moles">Jugar</button>
     </div>
@@ -98,7 +98,7 @@
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '1.5', APP_DATE = '2 nov 2026';
+  const APP_VERSION = '1.6', APP_DATE = '2 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -143,6 +143,63 @@
     o.start(t); o.stop(t + 0.13);
   }
 
+  // ---------- música (generada con WebAudio, sin archivos) ----------
+  // bucle de 4 compases en La menor (Am F C G): bombo, caja, charles, bajo y arpegio.
+  // music.bpm se puede cambiar en marcha: el programador lee el tempo en cada semicorchea.
+  const music = { on: false, bpm: 112, step: 0, next: 0, timer: 0, gain: null, noise: null };
+  const CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];   // notas MIDI
+  const ARP = [0, 1, 2, 1, 0, 2, 1, 2];
+  const mtof = n => 440 * Math.pow(2, (n - 69) / 12);
+  function tone(type, freq, t, dur, vol, glideTo) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(music.gain); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noiseHit(t, dur, vol, hp) {
+    const src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+    src.buffer = music.noise; f.type = 'highpass'; f.frequency.value = hp;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(f); f.connect(g); g.connect(music.gain); src.start(t); src.stop(t + dur + 0.02);
+  }
+  function playStep(st, t) {
+    const s16 = st % 16, bar = Math.floor(st / 16) % 4, ch = CHORDS[bar];
+    const fast = music.bpm > 130;
+    if (s16 % 4 === 0) tone('sine', 150, t, 0.18, 0.9, 45);                       // bombo
+    if (s16 === 4 || s16 === 12) noiseHit(t, 0.14, 0.45, 1500);                  // caja
+    if (s16 % 2 === 0 || fast) noiseHit(t, 0.04, s16 % 4 === 2 ? 0.22 : 0.12, 7000);   // charles
+    if ([0, 3, 6, 8, 10, 14].includes(s16)) tone('triangle', mtof(ch[0] - 24), t, 0.2, 0.55);   // bajo
+    if (s16 % 2 === 0) tone('square', mtof(ch[ARP[(s16 / 2) % 8]] + 12), t, 0.12, 0.07);        // arpegio
+  }
+  function musicTick() {
+    if (!music.on) return;
+    while (music.next < audioCtx.currentTime + 0.12) {
+      playStep(music.step, music.next);
+      music.step++;
+      music.next += 60 / music.bpm / 4;
+    }
+  }
+  function musicStart() {
+    if (!audioCtx) return;
+    musicStop();
+    if (!music.noise) {
+      const len = audioCtx.sampleRate * 0.5, buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      music.noise = buf;
+    }
+    music.gain = audioCtx.createGain(); music.gain.gain.value = 0.22; music.gain.connect(audioCtx.destination);
+    music.on = true; music.bpm = 112; music.step = 0; music.next = audioCtx.currentTime + 0.1;
+    music.timer = setInterval(musicTick, 25);
+  }
+  function musicStop() {
+    music.on = false; clearInterval(music.timer);
+    if (music.gain) {
+      const g = music.gain; music.gain = null;
+      try { g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05); setTimeout(() => g.disconnect(), 400); } catch (e) {}
+    }
+  }
+
   // ---------- tamaño / mapeo vídeo -> pantalla (cover + espejo) ----------
   let map = { ox: 0, oy: 0, dw: 1, dh: 1 };
   function resize() {
@@ -184,6 +241,7 @@
 
   function showMenu() {
     running = false; loopId++;
+    musicStop();
     dolls = []; particles = []; popups = []; hands = []; prevHands = []; holes = []; poses = [];
     $('start').style.display = 'flex';
     document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
@@ -257,7 +315,7 @@
     lastVideoTime = -1; lastData = null;
     startedAt = performance.now();
     $('mstats').style.display = game === 'moles' ? 'inline-block' : 'none';
-    if (game === 'moles') resetMoles(startedAt);
+    if (game === 'moles') { resetMoles(startedAt); musicStart(); }
     nextSpawnAt = startedAt + 800;
     running = true;
     const id = ++loopId;
@@ -512,7 +570,8 @@
     return p;
   }
   let holes = [], poses = [], R = 40;
-  let lives = MAX_LIVES, flashUntil = 0, lastStatsText = '', lastHole = -1;
+  let lives = MAX_LIVES, flashUntil = 0, lastStatsText = '', lastHole = -1, sprintShown = false;
+  const SPRINT_S = 20;
 
   function layoutHoles() {
     R = Math.max(26, Math.min(62, Math.min(W, H) * 0.085));
@@ -536,7 +595,7 @@
   }
 
   function resetMoles(now) {
-    lives = MAX_LIVES; flashUntil = 0; lastStatsText = ''; lastHole = -1;
+    lives = MAX_LIVES; flashUntil = 0; lastStatsText = ''; lastHole = -1; sprintShown = false;
     holes = []; layoutHoles();
     nextSpawnAt = now + 1200;
   }
@@ -570,9 +629,10 @@
     const i = free[Math.floor(Math.random() * free.length)];
     lastHole = i;
     const r = Math.random();
-    const type = e > 8 && r < 0.13 ? 'bomb' : r > 0.92 ? 'gold' : 'mole';
-    const stay = Math.max(1300, 2600 - e * 12) * (type === 'gold' ? 0.75 : 1);
-    holes[i].mole = { type, state: 'up', t0: now, upUntil: now + RISE_MS + stay, spin: Math.random() * 6 };
+    const type = e > 8 && r < 0.13 ? 'bomb' : r > 0.92 ? 'gold' : (e > 5 && r > 0.74) ? 'helmet' : 'mole';
+    const stay = Math.max(1300, 2600 - e * 12) * (type === 'gold' ? 0.75 : type === 'helmet' ? 1.35 : 1);
+    holes[i].mole = { type, state: 'up', t0: now, upUntil: now + RISE_MS + stay, spin: Math.random() * 6,
+                      hp: type === 'helmet' ? 2 : 1, cool: 0 };
   }
 
   // ---- detección de pose ----
@@ -646,6 +706,15 @@
 
   function whack(h, now) {
     const m = h.mole, tg = moleTarget(h, 1);
+    if (m.hp > 1) {   // topo con casco: el primer golpe sólo le quita el casco
+      m.hp--; m.cool = now + 280; m.upUntil = Math.max(m.upUntil, now + 1000);
+      const top = holeToScreen(h, 0, headY(1) - R * 0.5);
+      for (let i = 0; i < 16; i++) particles.push({ x: top.x, y: top.y, vx: (Math.random() - 0.5) * 12, vy: (Math.random() - 0.5) * 12 - 3,
+        size: 3 + Math.random() * 6, color: i % 2 ? '#ff9800' : '#ffc400', life: 1 });
+      popups.push({ x: tg.x, y: tg.y, text: '¡CLONK!', life: 0.8 });
+      pop(150);
+      return;
+    }
     m.state = 'hit'; m.t0 = now;
     if (m.type === 'bomb') {
       lives--; flashUntil = now + 350;
@@ -655,7 +724,7 @@
       pop(90);
       return;
     }
-    const pts = m.type === 'gold' ? 50 : 10;
+    const pts = m.type === 'gold' ? 50 : m.type === 'helmet' ? 30 : 10;
     score += pts; scoreEl.textContent = score;
     popups.push({ x: tg.x, y: tg.y, text: '+' + pts, life: 1 });
     const col = m.type === 'gold' ? '#ffe066' : '#c58a52';
@@ -727,6 +796,16 @@
     ctx.fillStyle = '#ff6f91'; ctx.beginPath(); ctx.ellipse(0, cy + R * 0.02, R * 0.13, R * 0.09, 0, 0, 7); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.fillRect(-R * 0.1, cy + R * 0.22, R * 0.09, R * 0.14); ctx.fillRect(R * 0.01, cy + R * 0.22, R * 0.09, R * 0.14);
     ctx.strokeStyle = dark; ctx.lineWidth = 1.5; ctx.strokeRect(-R * 0.1, cy + R * 0.22, R * 0.2, R * 0.14);
+    if (m.type === 'helmet' && m.hp > 1) {   // casco de obra
+      ctx.fillStyle = '#ffb300';
+      ctx.beginPath(); ctx.arc(0, cy - R * 0.46, R * 0.7, Math.PI, 0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ff8f00';
+      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(-R * 0.92, cy - R * 0.52, R * 1.84, R * 0.15, R * 0.07); else ctx.rect(-R * 0.92, cy - R * 0.52, R * 1.84, R * 0.15); ctx.fill();
+      ctx.fillRect(-R * 0.09, cy - R * 1.14, R * 0.18, R * 0.64);
+      ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(-R * 0.3, cy - R * 0.8, R * 0.12, 0, 7); ctx.fill();
+    } else if (m.type === 'helmet' && !hit) {   // sin casco: chichón y cara de mareo
+      ctx.fillStyle = '#ff8a80'; ctx.beginPath(); ctx.arc(R * 0.25, cy - R * 0.72, R * 0.17, 0, 7); ctx.fill();
+    }
     if (gold && !hit) {   // destellos
       ctx.fillStyle = '#fff';
       const a = now / 300 + m.spin;
@@ -764,6 +843,7 @@
 
   function endMoles() {
     running = false; loopId++;
+    musicStop();
     let best = 0;
     try { best = +localStorage.getItem('topos-best') || 0; if (score > best) { best = score; localStorage.setItem('topos-best', score); } } catch (e) {}
     const r = $('result');
@@ -783,7 +863,7 @@
     if (t >= nextSpawnAt) {
       spawnMole(now);
       const e = (now - startedAt) / 1000;
-      nextSpawnAt = t + Math.max(450, 1000 - e * 7) * (0.7 + Math.random() * 0.6);
+      nextSpawnAt = t + Math.max(450, 1000 - e * 7) * (0.7 + Math.random() * 0.6) * (112 / music.bpm);
     }
 
     for (const h of holes) drawHoleBack(h);
@@ -794,7 +874,7 @@
       if (m.state === 'hit') {
         if (now - m.t0 > (m.type === 'bomb' ? 50 : 450)) { h.mole = null; continue; }
       } else if (rise <= 0 && now > m.upUntil) { h.mole = null; continue; }
-      else if (rise > 0.55) {
+      else if (rise > 0.55 && now >= m.cool) {
         if (moleHit(moleTarget(h, rise))) whack(h, now);
       }
       if (h.mole) drawMole(h, now);
@@ -805,6 +885,13 @@
     if (now < flashUntil) { ctx.fillStyle = `rgba(255,0,0,${0.35 * (flashUntil - now) / 350})`; ctx.fillRect(0, 0, W, H); }
 
     const left = Math.max(0, Math.ceil((ROUND_MS - (now - startedAt)) / 1000));
+    const leftExact = (ROUND_MS - (now - startedAt)) / 1000;
+    // tramo final: la música se acelera poco a poco y los topos salen algo más rápido
+    music.bpm = leftExact > SPRINT_S ? 112 : 112 + 40 * Math.min(1, (SPRINT_S - leftExact) / SPRINT_S);
+    if (!sprintShown && leftExact <= SPRINT_S) {
+      sprintShown = true;
+      popups.push({ x: W / 2, y: H / 2, text: '🔥 ¡ÚLTIMOS 20 SEGUNDOS! 🔥', life: 1.6 });
+    }
     const txt = `⏱ ${left}s  ${'❤️'.repeat(Math.max(0, lives))}${'🖤'.repeat(MAX_LIVES - Math.max(0, lives))}`;
     if (txt !== lastStatsText) { $('mstats').textContent = txt; lastStatsText = txt; }
     statusEl.textContent = mode === 'pose'
