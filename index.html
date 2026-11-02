@@ -98,7 +98,7 @@
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '1.4', APP_DATE = '2 nov 2026';
+  const APP_VERSION = '1.5', APP_DATE = '2 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -620,7 +620,7 @@
   function hitterRadius(p, h) {
     const extra = +sensEl.value;
     return h.kind === 'hand'
-      ? Math.max(26, Math.min(95, p.scale * 0.55)) + extra
+      ? Math.max(22, Math.min(80, p.scale * 0.45)) + extra
       : Math.max(16, Math.min(55, p.scale * 0.33)) + extra;
   }
 
@@ -752,10 +752,9 @@
         const hr = hitterRadius(p, h);
         const g = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, hr);
         const c = h.kind === 'hand' ? '0,220,255' : '190,120,255';
-        // relleno casi uniforme hasta el borde, para que se vea del tamaño real con el que golpea
-        g.addColorStop(0, `rgba(${c},.6)`); g.addColorStop(0.75, `rgba(${c},.45)`); g.addColorStop(1, `rgba(${c},.15)`);
+        // sólo difuminado, sin borde: fuerte en el centro y se desvanece hasta el radio de golpe
+        g.addColorStop(0, `rgba(${c},.7)`); g.addColorStop(0.45, `rgba(${c},.5)`); g.addColorStop(1, `rgba(${c},0)`);
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(h.x, h.y, hr, 0, 7); ctx.fill();
-        ctx.strokeStyle = `rgba(${c},.9)`; ctx.lineWidth = 3; ctx.stroke();
       }
     }
     for (const p of pointers.values()) {
