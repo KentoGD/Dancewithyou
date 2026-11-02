@@ -47,6 +47,32 @@
   #mstats { margin-top: 6px; display: none; }
   #result { display: none; font-size: 1.3rem; font-weight: bold; color: #ffd54a; margin-bottom: 16px; line-height: 1.4; }
   .overlay .sens { margin-bottom: 14px; }
+  /* el menú puede ser más alto que la pantalla: centrado pero con scroll */
+  .overlay { justify-content: flex-start; }
+  .overlay > :first-child { margin-top: auto; }
+  .overlay > :last-child { margin-bottom: auto; }
+  .overlay, .overlay * { touch-action: pan-y; }
+  input, select { touch-action: auto; user-select: text; -webkit-user-select: text; font-size: 1rem; }
+  .btn-sec { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3); color: #fff; padding: 11px 20px;
+    font-size: 1rem; font-weight: bold; border-radius: 26px; cursor: pointer; }
+  .btn-sec.small { padding: 7px 12px; font-size: .9rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; margin: 8px 0; }
+  .row select, .row input[type=text] { padding: 8px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,.3);
+    background: #1c1e2a; color: #fff; }
+  .row input[type=text] { min-width: 0; flex: 1 1 160px; }
+  .row label { display: flex; align-items: center; gap: 6px; }
+  #cfg .game-card { max-width: 640px; text-align: left; }
+  #cfg h3 { font-size: 1rem; margin-bottom: 6px; }
+  .wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 8px; }
+  .wtile { position: relative; background: #fff; color: #222; border-radius: 14px; padding: 6px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 4px; border: 3px solid transparent; }
+  .wtile.sel { border-color: #00ffcc; }
+  .wtile img, .wtile .emo { width: 72px; height: 72px; object-fit: contain; font-size: 52px; line-height: 72px; text-align: center; }
+  .wtile img.photo { object-fit: cover; border-radius: 8px; }
+  .wtile b { font-size: .85rem; word-break: break-word; text-align: center; }
+  .wtile .del { position: absolute; top: -8px; right: -8px; width: 26px; height: 26px; border-radius: 13px; border: 0;
+    background: #ff4d6d; color: #fff; font-weight: bold; cursor: pointer; }
+  #cfg-msg { color: #ffd54a; font-size: .9rem; min-height: 1.2em; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -56,7 +82,7 @@
 
   <div class="hud">
     <div>
-      <div class="pill">Puntos: <span id="score">0</span></div><br>
+      <div class="pill" id="scorepill">Puntos: <span id="score">0</span></div><br>
       <div class="pill" id="mstats"></div>
       <div class="pill" id="combo">Combo x2</div>
       <div class="pill" id="status">Cargando…</div>
@@ -85,6 +111,17 @@
       <button class="btn-start" data-game="moles">Jugar</button>
     </div>
 
+    <div class="game-card">
+      <h2>📖 Lee y Atrapa</h2>
+      <small>Aparece una palabra y caen dibujos: toca con la mano (o con el dedo en la pantalla) el que corresponde.
+        Los demás rebotan. Sin tiempo ni puntos.</small>
+      <div class="row"><span>Lista:</span> <select id="learn-list"></select></div>
+      <div class="row">
+        <button class="btn-start" data-game="learn">Jugar</button>
+        <button class="btn-sec" id="btn-cfg">⚙ Mis palabras</button>
+      </div>
+    </div>
+
     <label class="sens"><span>Sensibilidad</span>
       <input type="range" id="sens" min="0" max="40" value="14" />
     </label>
@@ -93,12 +130,59 @@
     <div id="msg"></div>
     <div id="version"></div>
   </div>
+
+  <div class="overlay" id="cfg" style="display:none">
+    <h1>Mis palabras</h1>
+
+    <div class="game-card">
+      <div class="row">
+        <span>Lista:</span> <select id="cfg-list"></select>
+        <button class="btn-sec small" id="cfg-newlist">+ Nueva lista</button>
+        <button class="btn-sec small" id="cfg-renlist">✏ Renombrar</button>
+        <button class="btn-sec small" id="cfg-dellist">🗑 Borrar lista</button>
+      </div>
+      <small style="color:#9aa0b5">Toca una palabra para cambiar su imagen. La ✕ la borra.</small>
+      <div id="cfg-words" class="wgrid"></div>
+    </div>
+
+    <div class="game-card">
+      <h3 id="cfg-addtitle">Añadir palabra</h3>
+      <div class="row">
+        <input type="text" id="cfg-word" placeholder="Escribe una palabra (p. ej. bicicleta)" autocomplete="off" />
+      </div>
+      <div class="row">
+        <button class="btn-sec small" id="cfg-search">🔍 Buscar pictograma</button>
+        <button class="btn-sec small" id="cfg-photo-btn">📷 Foto propia</button>
+        <button class="btn-sec small" id="cfg-cancel" style="display:none">Cancelar</button>
+        <input type="file" id="cfg-photo" accept="image/*" style="display:none" />
+      </div>
+      <div id="cfg-msg"></div>
+      <div id="cfg-results" class="wgrid"></div>
+    </div>
+
+    <div class="game-card">
+      <h3>Opciones del juego</h3>
+      <div class="row" style="justify-content:flex-start">
+        <label><input type="checkbox" id="opt-upper" /> MAYÚSCULAS</label>
+        <label><input type="checkbox" id="opt-voice" /> Voz</label>
+      </div>
+      <div class="row" style="justify-content:flex-start">
+        <label>Dibujos a la vez <select id="opt-count"><option>2</option><option>3</option><option>4</option></select></label>
+        <label>Velocidad <select id="opt-speed"><option value="0.6">Muy lenta</option><option value="0.85">Lenta</option>
+          <option value="1.1">Normal</option><option value="1.4">Rápida</option></select></label>
+      </div>
+    </div>
+
+    <button class="btn-start" id="cfg-close">Hecho</button>
+    <div class="tip" style="margin-top:12px">Pictogramas: autor Sergio Palao. Origen: ARASAAC (arasaac.org).
+      Licencia CC BY-NC-SA. Propiedad: Gobierno de Aragón (España). Las palabras y fotos se guardan sólo en este dispositivo.</div>
+  </div>
 </div>
 
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '1.6', APP_DATE = '2 nov 2026';
+  const APP_VERSION = '1.7', APP_DATE = '2 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -209,6 +293,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     updateMap();
     if (game === 'moles') layoutHoles();
+    if (game === 'learn') learnLayout();
   }
   function updateMap() {
     const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
@@ -236,15 +321,17 @@
   document.addEventListener('webkitfullscreenchange', resize);
 
   // ---------- menú / arranque ----------
-  document.querySelectorAll('.btn-start').forEach(b => b.addEventListener('click', () => startGame(b.dataset.game)));
+  document.querySelectorAll('.btn-start[data-game]').forEach(b => b.addEventListener('click', () => startGame(b.dataset.game)));
   $('btn-menu').addEventListener('click', showMenu);
 
   function showMenu() {
     running = false; loopId++;
     musicStop();
+    try { speechSynthesis.cancel(); } catch (e) {}
+    learnItems = [];
     dolls = []; particles = []; popups = []; hands = []; prevHands = []; holes = []; poses = [];
     $('start').style.display = 'flex';
-    document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
+    document.querySelectorAll('.btn-start[data-game]').forEach(b => b.disabled = false);
   }
 
   async function ensureCamera() {
@@ -272,28 +359,34 @@
   }
 
   async function startGame(which) {
-    game = which === 'moles' ? 'moles' : 'dolls';
+    game = ['moles', 'learn'].includes(which) ? which : 'dolls';
     const msg = $('msg');
     msg.textContent = '';
     $('result').style.display = 'none';
-    document.querySelectorAll('.btn-start').forEach(b => b.disabled = true);
+    document.querySelectorAll('.btn-start[data-game]').forEach(b => b.disabled = true);
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
     } catch (e) {}
 
+    let camOk = true;
     try { await ensureCamera(); }
     catch (err) {
-      msg.textContent = 'No se pudo abrir la cámara. Da permiso en el navegador (y usa https o localhost).';
-      document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
-      return;
+      camOk = false;
+      if (game !== 'learn') {   // Lee y Atrapa se puede jugar sólo tocando la pantalla
+        msg.textContent = 'No se pudo abrir la cámara. Da permiso en el navegador (y usa https o localhost).';
+        document.querySelectorAll('.btn-start[data-game]').forEach(b => b.disabled = false);
+        return;
+      }
     }
 
     $('start').style.display = 'none';
-    statusEl.textContent = 'Cargando detector…';
+    statusEl.textContent = camOk ? 'Cargando detector…' : 'Sin cámara: toca la pantalla';
+    $('scorepill').style.display = game === 'learn' ? 'none' : 'inline-block';
     resize();
 
-    try {
+    if (!camOk) mode = 'touch';
+    else try {
       await loadMP();
       if (game === 'moles') {
         if (!poseLM) poseLM = await makeLandmarker(mpModule.PoseLandmarker, POSE_MODEL, {
@@ -316,6 +409,7 @@
     startedAt = performance.now();
     $('mstats').style.display = game === 'moles' ? 'inline-block' : 'none';
     if (game === 'moles') { resetMoles(startedAt); musicStart(); }
+    if (game === 'learn') learnStart();
     nextSpawnAt = startedAt + 800;
     running = true;
     const id = ++loopId;
@@ -851,7 +945,7 @@
     r.style.display = 'block';
     holes = []; poses = [];
     $('start').style.display = 'flex';
-    document.querySelectorAll('.btn-start').forEach(b => b.disabled = false);
+    document.querySelectorAll('.btn-start[data-game]').forEach(b => b.disabled = false);
   }
 
   // devuelve false si la partida ha terminado
@@ -903,6 +997,538 @@
   }
 
   // =====================================================================
+  //  JUEGO 3: LEE Y ATRAPA (educativo: palabra -> pictograma)
+  //  Sin tiempo, sin puntos y sin fallos: lo que no es, rebota.
+  // =====================================================================
+  const LEARN_KEY = 'lee-atrapa-v1';
+  const ARASAAC_IMG = id => `https://static.arasaac.org/pictograms/${id}/${id}_500.png`;
+  const ARASAAC_SEARCH = [
+    w => `https://api.arasaac.org/v1/pictograms/es/search/${encodeURIComponent(w)}`,
+    w => `https://api.arasaac.org/api/pictograms/es/search/${encodeURIComponent(w)}`
+  ];
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  // listas de inicio: el emoji sólo se usa mientras carga el pictograma o si no hay internet
+  const DEFAULT_LISTS = [
+    ['Básico', [['casa', '🏠'], ['perro', '🐶'], ['gato', '🐱'], ['árbol', '🌳'], ['coche', '🚗'], ['sol', '☀️'], ['manzana', '🍎'], ['pelota', '⚽']]],
+    ['Animales', [['perro', '🐶'], ['gato', '🐱'], ['pez', '🐟'], ['pájaro', '🐦'], ['vaca', '🐄'], ['caballo', '🐴']]],
+    ['Comida', [['agua', '💧'], ['pan', '🍞'], ['leche', '🥛'], ['plátano', '🍌'], ['galleta', '🍪'], ['huevo', '🥚']]]
+  ];
+  function defaultData() {
+    const lists = DEFAULT_LISTS.map(([name, ws]) => ({ id: uid(), name, words: ws.map(([word, emoji]) => ({ id: uid(), word, emoji, img: null })) }));
+    return { lists, current: lists[0].id, opts: { upper: true, voice: true, count: 3, speed: 0.85 } };
+  }
+  let LD;
+  try { LD = JSON.parse(localStorage.getItem(LEARN_KEY)); } catch (e) {}
+  if (!LD || !Array.isArray(LD.lists) || !LD.lists.length) LD = defaultData();
+  LD.opts = Object.assign({ upper: true, voice: true, count: 3, speed: 0.85 }, LD.opts || {});
+  function saveLD() {
+    try { localStorage.setItem(LEARN_KEY, JSON.stringify(LD)); return true; }
+    catch (e) { return false; }   // normalmente: no queda espacio (demasiadas fotos)
+  }
+  const curList = () => LD.lists.find(l => l.id === LD.current) || LD.lists[0];
+  const norm = w => w.trim().toLocaleLowerCase('es');
+  const shown = w => LD.opts.upper ? w.toLocaleUpperCase('es') : w;
+
+  // ---- imágenes ----
+  const imgCache = new Map();
+  function imgSrc(entry) {
+    if (!entry.img) return null;
+    return entry.img.kind === 'photo' ? entry.img.src : ARASAAC_IMG(entry.img.id);
+  }
+  function getImg(entry) {
+    const src = imgSrc(entry);
+    if (!src) return null;
+    let im = imgCache.get(src);
+    if (!im) {
+      im = new Image();
+      im.onerror = () => { im.failed = true; };
+      im.src = src;
+      imgCache.set(src, im);
+    }
+    return im.complete && im.naturalWidth && !im.failed ? im : null;
+  }
+  async function searchArasaac(word) {
+    for (const url of ARASAAC_SEARCH) {
+      try {
+        const r = await fetch(url(word));
+        if (r.status === 404) return [];
+        if (!r.ok) continue;
+        const data = await r.json();
+        return (Array.isArray(data) ? data : []).map(d => d._id).filter(id => id != null);
+      } catch (e) {}
+    }
+    throw new Error('sin conexión');
+  }
+  // las palabras sin imagen toman el primer pictograma de ARASAAC (se puede cambiar en "Mis palabras")
+  async function resolveMissing(list) {
+    let changed = false;
+    for (const w of list.words) {
+      if (w.img || w.noPicto) continue;
+      try {
+        const ids = await searchArasaac(norm(w.word));
+        if (ids.length) w.img = { kind: 'arasaac', id: ids[0] }; else w.noPicto = true;
+        changed = true;
+      } catch (e) { break; }   // sin internet: se queda con el emoji
+    }
+    if (changed) { saveLD(); if ($('cfg').style.display !== 'none') renderCfg(); }
+  }
+
+  // ---- voz ----
+  let esVoice = null;
+  function pickVoice() {
+    try {
+      const vs = speechSynthesis.getVoices();
+      esVoice = vs.find(v => /^es[-_]ES/i.test(v.lang)) || vs.find(v => /^es/i.test(v.lang)) || null;
+    } catch (e) {}
+  }
+  try { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {}
+  function say(text) {
+    if (!LD.opts.voice || !window.speechSynthesis) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'es-ES'; if (esVoice) u.voice = esVoice;
+      u.rate = 0.85; u.pitch = 1.1;
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  function chime(notes) {
+    if (!audioCtx) return;
+    notes.forEach((f, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime + i * 0.11;
+      o.type = 'triangle'; o.frequency.setValueAtTime(f, t);
+      g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + 0.4);
+    });
+  }
+  function boing() {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime;
+    o.type = 'sine'; o.frequency.setValueAtTime(320, t); o.frequency.exponentialRampToValueAtTime(140, t + 0.18);
+    g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + 0.22);
+  }
+
+  // ---- estado del juego ----
+  let learnItems = [], learnTarget = null, learnPhase = 'play', learnWinAt = 0, learnWinItem = null;
+  let learnNextSpawn = 0, learnLastWord = '', learnBag = [];
+  let wordBox = { x: 0, y: 0, w: 0, h: 0 }, fallArea = { x0: 0, x1: 0, y0: 0 }, itemS = 120;
+
+  function learnLayout() {
+    if (W >= H) {   // apaisado: palabra a la izquierda, dibujos caen a la derecha
+      wordBox = { x: 16, y: 90, w: W * 0.44 - 24, h: H - 120 };
+      fallArea = { x0: W * 0.46, x1: W - 12, y0: 0 };
+    } else {        // vertical: palabra arriba, dibujos debajo
+      wordBox = { x: 16, y: 110, w: W - 32, h: H * 0.22 };
+      fallArea = { x0: 12, x1: W - 12, y0: wordBox.y + wordBox.h + 10 };
+    }
+    const aw = fallArea.x1 - fallArea.x0;
+    itemS = Math.max(80, Math.min(W >= H ? H * 0.36 : H * 0.2, aw / 2.2, 260));
+  }
+
+  function learnPool() {
+    const own = curList().words.filter(w => w.word.trim());
+    if (own.length >= 3) return own;
+    // lista con muy pocas palabras: se completan las distracciones con la lista básica
+    const extra = DEFAULT_LISTS[0][1].map(([word, emoji]) => ({ id: 'd-' + word, word, emoji, img: null }));
+    const seen = new Set(own.map(w => norm(w.word)));
+    return own.concat(extra.filter(w => !seen.has(norm(w.word))));
+  }
+
+  function learnStart() {
+    learnLayout();
+    learnItems = []; learnPhase = 'play'; learnLastWord = ''; learnBag = [];
+    resolveMissing(curList());
+    // precarga
+    curList().words.forEach(getImg);
+    learnNewRound(performance.now() + 600);
+  }
+
+  function learnNewRound(now) {
+    const words = curList().words.filter(w => w.word.trim());
+    if (!words.length) { learnTarget = null; return; }
+    if (!learnBag.length) learnBag = words.slice().sort(() => Math.random() - 0.5);
+    let pick = learnBag.pop();
+    if (words.length > 1 && norm(pick.word) === learnLastWord && learnBag.length) { learnBag.unshift(pick); pick = learnBag.pop(); }
+    learnTarget = pick; learnLastWord = norm(pick.word);
+    learnPhase = 'play'; learnWinItem = null;
+    learnItems.forEach(it => it.leaving = true);
+    learnNextSpawn = now + 900;
+    setTimeout(() => { if (running && game === 'learn' && learnTarget === pick) say(pick.word); }, 350);
+  }
+
+  function learnSpawn(now) {
+    const live = learnItems.filter(it => !it.leaving);
+    if (live.length >= LD.opts.count) return;
+    const hasCorrect = live.some(it => it.correct);
+    let entry, correct = false;
+    if (!hasCorrect && (live.length >= 1 || Math.random() < 0.5)) { entry = learnTarget; correct = true; }
+    else {
+      const onScreen = new Set(live.map(it => norm(it.entry.word)));
+      const opts = learnPool().filter(w => norm(w.word) !== norm(learnTarget.word));
+      const fresh = opts.filter(w => !onScreen.has(norm(w.word)));
+      const from = fresh.length ? fresh : opts;
+      if (!from.length) { entry = learnTarget; correct = true; if (hasCorrect) return; }
+      else entry = from[Math.floor(Math.random() * from.length)];
+    }
+    // posición sin pisar a los que acaban de salir
+    const half = itemS / 2;
+    let x = fallArea.x0 + half, best = -1;
+    for (let k = 0; k < 8; k++) {
+      const cx = fallArea.x0 + half + Math.random() * Math.max(1, fallArea.x1 - fallArea.x0 - itemS);
+      const d = Math.min(9999, ...live.filter(it => it.y < fallArea.y0 + itemS * 1.5).map(it => Math.abs(it.x - cx)));
+      if (d > best) { best = d; x = cx; }
+    }
+    const base = (0.9 + Math.random() * 0.4) * LD.opts.speed * (H / 600);
+    learnItems.push({ entry, correct, x, y: fallArea.y0 - (W >= H ? half : -half), vx: (Math.random() - 0.5) * 0.5, vy: base,
+      base, rot: 0, wob: 0, t: Math.random() * 6, cool: 0, born: now, alpha: 0, leaving: false });
+  }
+
+  // ¿qué toca el objeto? devuelve el punto de contacto y la velocidad de la mano
+  function learnTouch(it) {
+    const r = itemS * 0.47, extra = +sensEl.value;
+    if (mode === 'hands') {
+      for (let h = 0; h < hands.length; h++) {
+        const hand = hands[h], prev = prevHands[h] || hand;
+        const cr = Math.max(8, Math.min(30, hand.size * 0.12)) + extra * 0.6;
+        for (let i = 0; i < hand.pts.length; i++) {
+          const a = hand.pts[i], b = (prev.pts && prev.pts[i]) || a;
+          if (distPointSeg(it.x, it.y, b.x, b.y, a.x, a.y) < r + cr) return { x: a.x, y: a.y, vx: a.x - b.x, vy: a.y - b.y };
+        }
+      }
+    } else if (mode === 'motion') {
+      if (motionInCircle(it.x, it.y, r * 0.6)) return { x: it.x, y: it.y + r, vx: 0, vy: -4 };
+    }
+    for (const p of pointers.values())
+      if (Math.hypot(p.x - it.x, p.y - it.y) < r + 10) return { x: p.x, y: p.y, vx: p.x - p.px, vy: p.y - p.py };
+    return null;
+  }
+
+  function learnBounce(it, c) {
+    let dx = it.x - c.x, dy = it.y - c.y;
+    const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+    let vx = dx * 7 + c.vx * 0.5, vy = dy * 7 + c.vy * 0.5 - 1;
+    const sp = Math.hypot(vx, vy);
+    if (sp > 14) { vx *= 14 / sp; vy *= 14 / sp; }
+    it.vx = vx; it.vy = vy; it.wob = 1; it.cool = 18;
+    it.x += dx * 8; it.y += dy * 8;
+    boing();
+  }
+
+  function learnWin(it, now) {
+    learnPhase = 'win'; learnWinAt = now; learnWinItem = it;
+    it.fromX = it.x; it.fromY = it.y;
+    learnItems.forEach(o => { if (o !== it) o.leaving = true; });
+    for (let i = 0; i < 70; i++) particles.push({ x: it.x, y: it.y, vx: (Math.random() - 0.5) * 16, vy: (Math.random() - 0.5) * 16 - 4,
+      size: 3 + Math.random() * 6, color: `hsl(${Math.floor(Math.random() * 360)},90%,60%)`, life: 1.4 });
+    chime([523, 659, 784, 1047]);
+    const praise = ['¡Bien hecho!', '¡Muy bien!', '¡Genial!', '¡Lo has conseguido!'];
+    learnPraise = praise[Math.floor(Math.random() * praise.length)];
+    say(learnPraise + ' ' + it.entry.word);
+  }
+  let learnPraise = '¡Bien hecho!';
+
+  // ---- dibujo ----
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+  }
+  function fitText(text, maxW, maxH, weight) {
+    let size = maxH;
+    ctx.font = `${weight} ${size}px 'Andika', 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded MT Bold', Arial, sans-serif`;
+    const w = ctx.measureText(text).width;
+    if (w > maxW) size = Math.floor(size * maxW / w);
+    ctx.font = `${weight} ${size}px 'Andika', 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded MT Bold', Arial, sans-serif`;
+    return size;
+  }
+  function drawWord(now) {
+    const b = wordBox;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 20;
+    ctx.fillStyle = learnPhase === 'win' ? '#e9fff3' : '#ffffff';
+    roundRect(b.x, b.y, b.w, b.h, 28); ctx.fill();
+    ctx.restore();
+    if (!learnTarget) {
+      ctx.fillStyle = '#333'; fitText('Añade palabras en ⚙ Mis palabras', b.w * 0.85, 28, 'bold');
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Añade palabras en ⚙ Mis palabras', b.x + b.w / 2, b.y + b.h / 2);
+      return;
+    }
+    const txt = shown(learnTarget.word);
+    const pulse = learnPhase === 'win' ? 1 + 0.06 * Math.sin((now - learnWinAt) / 80) : 1;
+    ctx.save();
+    ctx.translate(b.x + b.w / 2, b.y + b.h / 2); ctx.scale(pulse, pulse);
+    fitText(txt, b.w * 0.86, Math.min(b.h * 0.42, 190), '900');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = learnPhase === 'win' ? '#0a8f4f' : '#1d1d2b';
+    ctx.fillText(txt, 0, 0);
+    ctx.restore();
+    // icono de altavoz: tocar la palabra la vuelve a decir
+    if (LD.opts.voice) {
+      ctx.font = `${Math.round(Math.min(34, b.h * 0.12))}px sans-serif`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.fillText('🔊', b.x + b.w - 14, b.y + b.h - 10);
+    }
+  }
+  function drawItem(it, now) {
+    const S = itemS * (it.scale || 1), half = S / 2;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, it.alpha));
+    ctx.translate(it.x, it.y);
+    ctx.rotate(Math.sin(it.t * 3) * 0.25 * it.wob + Math.sin(it.t * 0.8) * 0.04);
+    ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 6;
+    ctx.fillStyle = '#fff';
+    roundRect(-half, -half, S, S, S * 0.14); ctx.fill();
+    ctx.shadowColor = 'transparent';
+    if (learnPhase === 'win' && it === learnWinItem) {
+      ctx.strokeStyle = '#18c26b'; ctx.lineWidth = Math.max(6, S * 0.05); roundRect(-half, -half, S, S, S * 0.14); ctx.stroke();
+    }
+    const im = getImg(it.entry), pad = S * 0.08;
+    if (im) {
+      ctx.save(); roundRect(-half + pad / 2, -half + pad / 2, S - pad, S - pad, S * 0.1); ctx.clip();
+      const box = S - pad * 2, photo = it.entry.img && it.entry.img.kind === 'photo';
+      const k = (photo ? Math.max : Math.min)(box / im.naturalWidth, box / im.naturalHeight);
+      const dw = im.naturalWidth * k, dh = im.naturalHeight * k;
+      ctx.drawImage(im, -dw / 2, -dh / 2, dw, dh);
+      ctx.restore();
+    } else if (it.entry.emoji) {
+      ctx.font = `${Math.round(S * 0.62)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(it.entry.emoji, 0, S * 0.04);
+    } else {
+      ctx.fillStyle = '#bbb'; ctx.font = `bold ${Math.round(S * 0.3)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('…', 0, 0);
+    }
+    ctx.restore();
+  }
+  function drawLearnHands() {
+    for (const hand of hands) {
+      const r = Math.max(30, hand.size * 0.9);
+      const g = ctx.createRadialGradient(hand.palm.x, hand.palm.y, 0, hand.palm.x, hand.palm.y, r);
+      g.addColorStop(0, 'rgba(255,230,120,.55)'); g.addColorStop(1, 'rgba(255,230,120,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(hand.palm.x, hand.palm.y, r, 0, 7); ctx.fill();
+      ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 4;
+      ctx.beginPath();
+      for (const [a, b] of BONES) { ctx.moveTo(hand.lm[a].x, hand.lm[a].y); ctx.lineTo(hand.lm[b].x, hand.lm[b].y); }
+      ctx.stroke();
+    }
+    for (const p of pointers.values()) {
+      ctx.fillStyle = 'rgba(255,230,120,.5)'; ctx.beginPath(); ctx.arc(p.x, p.y, 24, 0, 7); ctx.fill();
+    }
+  }
+
+  let wordTapAt = 0;
+  function learnStep(t) {
+    if (mode === 'hands') detectHands(); else if (mode === 'motion') detectMotion();
+    const now = performance.now();
+    if (!video.videoWidth) { ctx.fillStyle = '#20243a'; ctx.fillRect(0, 0, W, H); }
+    ctx.fillStyle = 'rgba(10,12,30,.25)'; ctx.fillRect(0, 0, W, H);   // atenúa la cámara: los dibujos destacan más
+
+    // tocar la palabra (dedo) la repite
+    for (const p of pointers.values())
+      if (learnTarget && now - wordTapAt > 1500 && p.x > wordBox.x && p.x < wordBox.x + wordBox.w && p.y > wordBox.y && p.y < wordBox.y + wordBox.h) {
+        wordTapAt = now; say(learnTarget.word);
+      }
+
+    if (learnTarget && learnPhase === 'play' && t >= learnNextSpawn) {
+      learnSpawn(now);
+      learnNextSpawn = t + (1500 + Math.random() * 900) / LD.opts.speed;
+    }
+
+    for (let i = learnItems.length - 1; i >= 0; i--) {
+      const it = learnItems[i];
+      it.t += 0.03;
+      if (it === learnWinItem) {   // el acertado va al centro de la zona y crece
+        const k = Math.min(1, (now - learnWinAt) / 600), e = 1 - Math.pow(1 - k, 3);
+        const cx = (fallArea.x0 + fallArea.x1) / 2, cy = (Math.max(fallArea.y0, 0) + H) / 2;
+        it.x = it.fromX + (cx - it.fromX) * e; it.y = it.fromY + (cy - it.fromY) * e;
+        it.scale = 1 + 0.35 * e; it.alpha = 1; it.wob = 0;
+        drawItem(it, now);
+        continue;
+      }
+      it.alpha += it.leaving ? -0.05 : 0.06;
+      if (it.leaving && it.alpha <= 0) { learnItems.splice(i, 1); continue; }
+      // vuelve poco a poco a su caída tranquila después de un rebote
+      it.vx += (0 - it.vx) * 0.015; it.vy += (it.base - it.vy) * 0.03;
+      it.x += it.vx; it.y += it.vy;
+      it.wob *= 0.95;
+      if (it.cool > 0) it.cool--;
+      const half = itemS / 2;
+      if (it.x < fallArea.x0 + half) { it.x = fallArea.x0 + half; it.vx = Math.abs(it.vx); }
+      if (it.x > fallArea.x1 - half) { it.x = fallArea.x1 - half; it.vx = -Math.abs(it.vx); }
+      if (it.y < fallArea.y0 - half && it.vy < 0) { it.vy = Math.abs(it.vy) * 0.5; }
+      if (it.y - half > H) { learnItems.splice(i, 1); continue; }   // si se escapa el correcto, volverá a caer
+
+      if (learnPhase === 'play' && !it.leaving && it.alpha > 0.5) {
+        const c = learnTouch(it);
+        if (c) {
+          if (it.correct) learnWin(it, now);
+          else if (it.cool <= 0) learnBounce(it, c);
+        }
+      }
+      drawItem(it, now);
+    }
+
+    drawWord(now);
+    if (learnPhase === 'win') {
+      const k = Math.min(1, (now - learnWinAt) / 250);
+      ctx.save();
+      ctx.globalAlpha = k;
+      const cx = (fallArea.x0 + fallArea.x1) / 2, y = Math.max(fallArea.y0, 0) + 70;
+      fitText(learnPraise, (fallArea.x1 - fallArea.x0) * 0.9, 60, '900');
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 8; ctx.strokeStyle = '#0a5c33'; ctx.strokeText(learnPraise, cx, y);
+      ctx.fillStyle = '#5dff9e'; ctx.fillText(learnPraise, cx, y);
+      ctx.restore();
+      if (now - learnWinAt > 3000) learnNewRound(now);
+    }
+    drawLearnHands();
+    statusEl.textContent = mode === 'hands' ? (hands.length ? '🖐 Toca el dibujo correcto' : '🖐 Enseña la mano a la cámara')
+      : mode === 'touch' ? '👆 Toca el dibujo en la pantalla' : '👋 Mueve la mano sobre el dibujo';
+  }
+
+  // =====================================================================
+  //  EDITOR "MIS PALABRAS"
+  // =====================================================================
+  let editingId = null;
+  function fillListSelects() {
+    for (const sel of [$('learn-list'), $('cfg-list')]) {
+      sel.innerHTML = '';
+      for (const l of LD.lists) {
+        const o = document.createElement('option'); o.value = l.id; o.textContent = `${l.name} (${l.words.length})`;
+        sel.appendChild(o);
+      }
+      sel.value = curList().id;
+    }
+  }
+  function tileFor(entry, onClick, onDel) {
+    const d = document.createElement('div'); d.className = 'wtile' + (entry.id === editingId ? ' sel' : '');
+    const src = imgSrc(entry);
+    if (src) {
+      const im = document.createElement('img'); im.src = src; im.alt = entry.word || '';
+      if (entry.img.kind === 'photo') im.className = 'photo';
+      d.appendChild(im);
+    } else {
+      const e = document.createElement('div'); e.className = 'emo'; e.textContent = entry.emoji || '❔'; d.appendChild(e);
+    }
+    if (entry.word) { const b = document.createElement('b'); b.textContent = entry.word; d.appendChild(b); }
+    d.addEventListener('click', onClick);
+    if (onDel) {
+      const x = document.createElement('button'); x.className = 'del'; x.textContent = '✕'; x.title = 'Borrar';
+      x.addEventListener('click', ev => { ev.stopPropagation(); onDel(); });
+      d.appendChild(x);
+    }
+    return d;
+  }
+  function cfgMsg(t) { $('cfg-msg').textContent = t || ''; }
+  function renderCfg() {
+    fillListSelects();
+    const box = $('cfg-words'); box.innerHTML = '';
+    const list = curList();
+    if (!list.words.length) { box.innerHTML = '<small style="color:#9aa0b5">Esta lista está vacía: añade palabras abajo.</small>'; }
+    for (const w of list.words) {
+      box.appendChild(tileFor(w, () => startEdit(w), () => {
+        if (!confirm(`¿Borrar "${w.word}"?`)) return;
+        list.words = list.words.filter(x => x !== w);
+        if (editingId === w.id) stopEdit();
+        saveLD(); renderCfg();
+      }));
+    }
+    const editing = list.words.find(w => w.id === editingId);
+    $('cfg-addtitle').textContent = editing ? `Cambiar imagen de "${editing.word}"` : 'Añadir palabra';
+    $('cfg-cancel').style.display = editing ? 'inline-block' : 'none';
+    $('opt-upper').checked = !!LD.opts.upper; $('opt-voice').checked = !!LD.opts.voice;
+    $('opt-count').value = String(LD.opts.count); $('opt-speed').value = String(LD.opts.speed);
+  }
+  function startEdit(w) {
+    editingId = w.id; $('cfg-word').value = w.word; $('cfg-results').innerHTML = '';
+    cfgMsg('Busca otro pictograma o pon una foto.');
+    renderCfg();
+    $('cfg-addtitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  function stopEdit() { editingId = null; $('cfg-word').value = ''; $('cfg-results').innerHTML = ''; cfgMsg(''); }
+
+  // guarda la palabra con la imagen elegida (nueva, o cambia la imagen de la que se está editando)
+  function commitWord(img) {
+    const word = $('cfg-word').value.trim();
+    if (!word) { cfgMsg('Escribe primero la palabra.'); return; }
+    const list = curList();
+    let w = list.words.find(x => x.id === editingId);
+    if (w) { w.word = word; w.img = img; w.noPicto = false; }
+    else {
+      const dup = list.words.find(x => norm(x.word) === norm(word));
+      if (dup) { dup.img = img; dup.noPicto = false; w = dup; }
+      else { w = { id: uid(), word, img }; list.words.push(w); }
+    }
+    if (!saveLD()) { cfgMsg('⚠ No queda espacio en el dispositivo: borra alguna foto.'); return; }
+    stopEdit(); renderCfg();
+    cfgMsg(`✔ "${word}" guardada.`);
+  }
+
+  $('btn-cfg').addEventListener('click', () => { $('start').style.display = 'none'; $('cfg').style.display = 'flex'; stopEdit(); renderCfg(); resolveMissing(curList()); });
+  $('cfg-close').addEventListener('click', () => {
+    $('cfg').style.display = 'none'; $('start').style.display = 'flex'; stopEdit(); fillListSelects();
+    resolveMissing(curList());
+  });
+  $('learn-list').addEventListener('change', e => { LD.current = e.target.value; saveLD(); });
+  $('cfg-list').addEventListener('change', e => { LD.current = e.target.value; saveLD(); stopEdit(); renderCfg(); resolveMissing(curList()); });
+  $('cfg-newlist').addEventListener('click', () => {
+    const name = (prompt('Nombre de la nueva lista:') || '').trim();
+    if (!name) return;
+    const l = { id: uid(), name, words: [] }; LD.lists.push(l); LD.current = l.id; saveLD(); stopEdit(); renderCfg();
+  });
+  $('cfg-renlist').addEventListener('click', () => {
+    const l = curList(), name = (prompt('Nuevo nombre de la lista:', l.name) || '').trim();
+    if (name) { l.name = name; saveLD(); renderCfg(); }
+  });
+  $('cfg-dellist').addEventListener('click', () => {
+    const l = curList();
+    if (LD.lists.length <= 1) { cfgMsg('Tiene que quedar al menos una lista.'); return; }
+    if (!confirm(`¿Borrar la lista "${l.name}" y sus ${l.words.length} palabras?`)) return;
+    LD.lists = LD.lists.filter(x => x !== l); LD.current = LD.lists[0].id; saveLD(); stopEdit(); renderCfg();
+  });
+  $('cfg-cancel').addEventListener('click', () => { stopEdit(); renderCfg(); });
+
+  async function doSearch() {
+    const word = $('cfg-word').value.trim();
+    if (!word) { cfgMsg('Escribe primero la palabra.'); return; }
+    const box = $('cfg-results'); box.innerHTML = '';
+    cfgMsg('Buscando en ARASAAC…');
+    let ids;
+    try { ids = await searchArasaac(norm(word)); }
+    catch (e) { cfgMsg('No se pudo conectar con ARASAAC (¿hay internet?). Puedes usar una foto propia.'); return; }
+    if (!ids.length) { cfgMsg(`No hay pictogramas para "${word}". Prueba otra palabra o usa una foto.`); return; }
+    cfgMsg('Elige el pictograma:');
+    for (const id of ids.slice(0, 24)) box.appendChild(tileFor({ id: 'r' + id, img: { kind: 'arasaac', id } }, () => commitWord({ kind: 'arasaac', id })));
+  }
+  $('cfg-search').addEventListener('click', doSearch);
+  $('cfg-word').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  $('cfg-photo-btn').addEventListener('click', () => {
+    if (!$('cfg-word').value.trim()) { cfgMsg('Escribe primero la palabra.'); return; }
+    $('cfg-photo').click();
+  });
+  $('cfg-photo').addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const im = new Image(), url = URL.createObjectURL(f);
+    im.onload = () => {
+      // recorta al cuadrado del centro y reduce a 360 px para que ocupe poco
+      const side = Math.min(im.naturalWidth, im.naturalHeight), N = 360;
+      const c = document.createElement('canvas'); c.width = c.height = N;
+      c.getContext('2d').drawImage(im, (im.naturalWidth - side) / 2, (im.naturalHeight - side) / 2, side, side, 0, 0, N, N);
+      URL.revokeObjectURL(url);
+      commitWord({ kind: 'photo', src: c.toDataURL('image/jpeg', 0.8) });
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); cfgMsg('No se pudo leer la foto.'); };
+    im.src = url;
+  });
+  $('opt-upper').addEventListener('change', e => { LD.opts.upper = e.target.checked; saveLD(); });
+  $('opt-voice').addEventListener('change', e => { LD.opts.voice = e.target.checked; saveLD(); });
+  $('opt-count').addEventListener('change', e => { LD.opts.count = +e.target.value; saveLD(); });
+  $('opt-speed').addEventListener('change', e => { LD.opts.speed = +e.target.value; saveLD(); });
+  fillListSelects();
+  // sólo para pruebas automáticas (index.html#debug)
+  if (location.hash === '#debug') window.__learn = () => ({ items: learnItems, target: learnTarget, phase: learnPhase, S: itemS, mode });
+
+  // =====================================================================
   //  BUCLE COMÚN
   // =====================================================================
   function drawVideo() {
@@ -917,6 +1543,7 @@
     if (!running || id !== loopId) return;
     drawVideo();
     if (game === 'moles') { if (!molesStep(t)) return; }
+    else if (game === 'learn') learnStep(t);
     else dollsStep(t);
 
     for (let i = particles.length - 1; i >= 0; i--) {
