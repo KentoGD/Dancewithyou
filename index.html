@@ -141,7 +141,8 @@
         <button class="btn-sec small" id="cfg-renlist">✏ Renombrar</button>
         <button class="btn-sec small" id="cfg-dellist">🗑 Borrar lista</button>
       </div>
-      <small style="color:#9aa0b5">Toca una palabra para cambiar su imagen. La ✕ la borra.</small>
+      <small style="color:#9aa0b5">Toca una palabra para cambiar su imagen. La ✕ la borra.
+        En el juego, la tarjeta de la palabra se mueve arrastrándola y cambia de tamaño desde su esquina de abajo a la derecha.</small>
       <div id="cfg-words" class="wgrid"></div>
     </div>
 
@@ -168,6 +169,7 @@
       </div>
       <div class="row" style="justify-content:flex-start">
         <label>Dibujos a la vez <select id="opt-count"><option>2</option><option>3</option><option>4</option></select></label>
+        <button class="btn-sec small" id="opt-boxreset">↺ Palabra a su tamaño y sitio iniciales</button>
         <label>Velocidad <select id="opt-speed"><option value="0.6">Muy lenta</option><option value="0.85">Lenta</option>
           <option value="1.1">Normal</option><option value="1.4">Rápida</option></select></label>
       </div>
@@ -182,7 +184,7 @@
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '1.7', APP_DATE = '2 nov 2026';
+  const APP_VERSION = '1.8', APP_DATE = '2 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -328,7 +330,7 @@
     running = false; loopId++;
     musicStop();
     try { speechSynthesis.cancel(); } catch (e) {}
-    learnItems = [];
+    learnItems = []; boxDrag = null;
     dolls = []; particles = []; popups = []; hands = []; prevHands = []; holes = []; poses = [];
     $('start').style.display = 'flex';
     document.querySelectorAll('.btn-start[data-game]').forEach(b => b.disabled = false);
@@ -1114,16 +1116,69 @@
   let learnNextSpawn = 0, learnLastWord = '', learnBag = [];
   let wordBox = { x: 0, y: 0, w: 0, h: 0 }, fallArea = { x0: 0, x1: 0, y0: 0 }, itemS = 120;
 
-  function learnLayout() {
-    if (W >= H) {   // apaisado: palabra a la izquierda, dibujos caen a la derecha
-      wordBox = { x: 16, y: 90, w: W * 0.44 - 24, h: H - 120 };
-      fallArea = { x0: W * 0.46, x1: W - 12, y0: 0 };
-    } else {        // vertical: palabra arriba, dibujos debajo
-      wordBox = { x: 16, y: 110, w: W - 32, h: H * 0.22 };
-      fallArea = { x0: 12, x1: W - 12, y0: wordBox.y + wordBox.h + 10 };
+  // La tarjeta de la palabra se puede mover (arrastrándola) y cambiar de tamaño (esquina de abajo a la derecha)
+  // con ratón o dedo. Se guarda en proporción a la pantalla, aparte para horizontal y vertical.
+  const orientKey = () => W >= H ? 'land' : 'port';
+  function defaultWordBox() {
+    return W >= H ? { x: 16, y: H * 0.24, w: W * 0.36, h: H * 0.52 }     // apaisado: a la izquierda
+                  : { x: 16, y: 110, w: W - 32, h: H * 0.16 };          // vertical: arriba
+  }
+  function clampWordBox(b) {
+    const minW = 120, minH = 70;
+    b.w = Math.max(minW, Math.min(W - 8, b.w)); b.h = Math.max(minH, Math.min(H - 8, b.h));
+    b.x = Math.max(4, Math.min(W - b.w - 4, b.x)); b.y = Math.max(4, Math.min(H - b.h - 4, b.y));
+    return b;
+  }
+  function computeFallArea() {
+    const b = wordBox;
+    if (W >= H) {   // los dibujos caen en el lado libre de la pantalla
+      if (b.x + b.w / 2 < W / 2) fallArea = { x0: b.x + b.w + 16, x1: W - 12, y0: 0 };
+      else fallArea = { x0: 12, x1: b.x - 16, y0: 0 };
+      if (fallArea.x1 - fallArea.x0 < 200) fallArea = { x0: 12, x1: W - 12, y0: 0 };
+    } else {
+      fallArea = { x0: 12, x1: W - 12, y0: b.y + b.h < H * 0.5 ? b.y + b.h + 10 : 0 };
     }
     const aw = fallArea.x1 - fallArea.x0;
     itemS = Math.max(80, Math.min(W >= H ? H * 0.36 : H * 0.2, aw / 2.2, 260));
+  }
+  function learnLayout() {
+    const f = LD.opts.box && LD.opts.box[orientKey()];
+    wordBox = clampWordBox(f ? { x: f.x * W, y: f.y * H, w: f.w * W, h: f.h * H } : defaultWordBox());
+    computeFallArea();
+  }
+  function saveWordBox() {
+    LD.opts.box = LD.opts.box || {};
+    LD.opts.box[orientKey()] = { x: wordBox.x / W, y: wordBox.y / H, w: wordBox.w / W, h: wordBox.h / H };
+    saveLD();
+  }
+  let boxDrag = null;
+  const gripSize = () => Math.max(34, Math.min(52, Math.min(wordBox.w, wordBox.h) * 0.3));
+  function learnPointerDown(e) {
+    if (!running || game !== 'learn') return false;
+    const b = wordBox, x = e.clientX, y = e.clientY, g = gripSize();
+    if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return false;
+    const kind = (x > b.x + b.w - g * 1.3 && y > b.y + b.h - g * 1.3) ? 'resize' : 'move';
+    boxDrag = { id: e.pointerId, kind, sx: x, sy: y, b0: { ...b }, moved: false };
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    return true;
+  }
+  function learnPointerMove(e) {
+    if (!boxDrag || e.pointerId !== boxDrag.id) return false;
+    const dx = e.clientX - boxDrag.sx, dy = e.clientY - boxDrag.sy, b0 = boxDrag.b0;
+    if (Math.hypot(dx, dy) > 6) boxDrag.moved = true;
+    if (!boxDrag.moved) return true;
+    wordBox = boxDrag.kind === 'move'
+      ? clampWordBox({ x: b0.x + dx, y: b0.y + dy, w: b0.w, h: b0.h })
+      : clampWordBox({ x: b0.x, y: b0.y, w: b0.w + dx, h: b0.h + dy });
+    computeFallArea();
+    return true;
+  }
+  function learnPointerUp(e) {
+    if (!boxDrag || e.pointerId !== boxDrag.id) return false;
+    if (boxDrag.moved) saveWordBox();
+    else if (learnTarget) say(learnTarget.word);   // un toque sin arrastrar repite la palabra
+    boxDrag = null;
+    return true;
   }
 
   function learnPool() {
@@ -1257,15 +1312,25 @@
     const pulse = learnPhase === 'win' ? 1 + 0.06 * Math.sin((now - learnWinAt) / 80) : 1;
     ctx.save();
     ctx.translate(b.x + b.w / 2, b.y + b.h / 2); ctx.scale(pulse, pulse);
-    fitText(txt, b.w * 0.86, Math.min(b.h * 0.42, 190), '900');
+    fitText(txt, b.w * 0.84, Math.min(b.h * 0.5, 220), '900');
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = learnPhase === 'win' ? '#0a8f4f' : '#1d1d2b';
     ctx.fillText(txt, 0, 0);
     ctx.restore();
     // icono de altavoz: tocar la palabra la vuelve a decir
     if (LD.opts.voice) {
-      ctx.font = `${Math.round(Math.min(34, b.h * 0.12))}px sans-serif`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-      ctx.fillText('🔊', b.x + b.w - 14, b.y + b.h - 10);
+      ctx.font = `${Math.round(Math.max(16, Math.min(30, b.h * 0.14)))}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText('🔊', b.x + 12, b.y + b.h - 8);
+    }
+    // asa para cambiar el tamaño (rayitas en la esquina)
+    const g = gripSize(), cx = b.x + b.w - 10, cy = b.y + b.h - 10;
+    ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const k of [0.35, 0.65, 0.95]) { ctx.moveTo(cx - g * k, cy); ctx.lineTo(cx, cy - g * k); }
+    ctx.stroke();
+    if (boxDrag && boxDrag.moved) {   // contorno mientras se arrastra
+      ctx.save(); ctx.setLineDash([10, 8]); ctx.strokeStyle = '#00c8ff'; ctx.lineWidth = 4;
+      roundRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8, 30); ctx.stroke(); ctx.restore();
     }
   }
   function drawItem(it, now) {
@@ -1314,18 +1379,12 @@
     }
   }
 
-  let wordTapAt = 0;
   function learnStep(t) {
     if (mode === 'hands') detectHands(); else if (mode === 'motion') detectMotion();
     const now = performance.now();
     if (!video.videoWidth) { ctx.fillStyle = '#20243a'; ctx.fillRect(0, 0, W, H); }
     ctx.fillStyle = 'rgba(10,12,30,.25)'; ctx.fillRect(0, 0, W, H);   // atenúa la cámara: los dibujos destacan más
 
-    // tocar la palabra (dedo) la repite
-    for (const p of pointers.values())
-      if (learnTarget && now - wordTapAt > 1500 && p.x > wordBox.x && p.x < wordBox.x + wordBox.w && p.y > wordBox.y && p.y < wordBox.y + wordBox.h) {
-        wordTapAt = now; say(learnTarget.word);
-      }
 
     if (learnTarget && learnPhase === 'play' && t >= learnNextSpawn) {
       learnSpawn(now);
@@ -1524,9 +1583,10 @@
   $('opt-voice').addEventListener('change', e => { LD.opts.voice = e.target.checked; saveLD(); });
   $('opt-count').addEventListener('change', e => { LD.opts.count = +e.target.value; saveLD(); });
   $('opt-speed').addEventListener('change', e => { LD.opts.speed = +e.target.value; saveLD(); });
+  $('opt-boxreset').addEventListener('click', () => { delete LD.opts.box; saveLD(); cfgMsg('✔ La palabra vuelve a su tamaño y sitio iniciales.'); });
   fillListSelects();
   // sólo para pruebas automáticas (index.html#debug)
-  if (location.hash === '#debug') window.__learn = () => ({ items: learnItems, target: learnTarget, phase: learnPhase, S: itemS, mode });
+  if (location.hash === '#debug') window.__learn = () => ({ box: wordBox, fall: fallArea, items: learnItems, target: learnTarget, phase: learnPhase, S: itemS, mode });
 
   // =====================================================================
   //  BUCLE COMÚN
@@ -1566,12 +1626,16 @@
   }
 
   // ---------- táctil / ratón ----------
-  canvas.addEventListener('pointerdown', e => pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY }));
+  canvas.addEventListener('pointerdown', e => {
+    if (learnPointerDown(e)) return;   // la tarjeta de la palabra (Lee y Atrapa) se arrastra
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY });
+  });
   canvas.addEventListener('pointermove', e => {
+    if (learnPointerMove(e)) return;
     const p = pointers.get(e.pointerId);
     if (p) { p.px = p.x; p.py = p.y; p.x = e.clientX; p.y = e.clientY; }
   });
-  const endPtr = e => pointers.delete(e.pointerId);
+  const endPtr = e => { learnPointerUp(e); pointers.delete(e.pointerId); };
   canvas.addEventListener('pointerup', endPtr);
   canvas.addEventListener('pointercancel', endPtr);
   canvas.addEventListener('pointerleave', endPtr);
