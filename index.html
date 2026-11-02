@@ -80,7 +80,7 @@
     <div class="game-card">
       <h2>🔨 Machaca Topos</h2>
       <small>Salen topos por los bordes de la pantalla: machácalos con las manos (los de abajo, también con los pies).
-        Los dorados valen más. ¡Ojo con las bombas! 60 segundos, 3 vidas. Se puede jugar de 2.
+        Los dorados valen más. ¡Ojo con las bombas! 90 segundos, 3 vidas. Se puede jugar de 2.
         Ponte a 2–3 m para que se te vea entero.</small>
       <button class="btn-start" data-game="moles">Jugar</button>
     </div>
@@ -98,7 +98,7 @@
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '1.2', APP_DATE = '2 nov 2026';
+  const APP_VERSION = '1.3', APP_DATE = '2 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -488,12 +488,29 @@
   // =====================================================================
   //  JUEGO 2: MACHACA TOPOS (cuerpo entero con PoseLandmarker)
   // =====================================================================
-  const ROUND_MS = 60000, MAX_LIVES = 3;
-  // landmarks de pose: mano = muñeca + meñique + índice; pie = talón + punta
+  const ROUND_MS = 90000, MAX_LIVES = 3;
+  // landmarks de pose. En la pose, "meñique" e "índice" son los nudillos, casi en la muñeca:
+  // el punto de golpe de la mano se proyecta más allá (centro real de la mano / puño).
   const HITTERS = [
-    { kind: 'hand', idx: [15, 17, 19] }, { kind: 'hand', idx: [16, 18, 20] },
+    { kind: 'hand', wrist: 15, elbow: 13, idx: [15, 17, 19] }, { kind: 'hand', wrist: 16, elbow: 14, idx: [16, 18, 20] },
     { kind: 'foot', idx: [29, 31] },     { kind: 'foot', idx: [30, 32] }
   ];
+  // punto de golpe de una mano en pantalla
+  function handPoint(lms, def) {
+    const w = toScreen(lms[def.wrist].x, lms[def.wrist].y);
+    const a = toScreen(lms[def.idx[1]].x, lms[def.idx[1]].y), b = toScreen(lms[def.idx[2]].x, lms[def.idx[2]].y);
+    const k = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    // 1) siguiendo la dirección muñeca -> nudillos
+    let p = { x: w.x + (k.x - w.x) * 2.2, y: w.y + (k.y - w.y) * 2.2 };
+    // 2) prolongando el antebrazo (codo -> muñeca), más estable cuando la mano sale borrosa
+    const el = lms[def.elbow];
+    if ((el.visibility ?? 1) > 0.3) {
+      const e = toScreen(el.x, el.y);
+      const f = { x: w.x + (w.x - e.x) * 0.38, y: w.y + (w.y - e.y) * 0.38 };
+      p = { x: (p.x + f.x) / 2, y: (p.y + f.y) / 2 };
+    }
+    return p;
+  }
   let holes = [], poses = [], R = 40;
   let lives = MAX_LIVES, flashUntil = 0, lastStatsText = '', lastHole = -1;
 
@@ -545,7 +562,7 @@
   function spawnMole(now) {
     const e = (now - startedAt) / 1000;
     const players = Math.max(1, Math.min(2, poses.length));
-    const maxActive = Math.min(4, 1 + Math.floor(e / 15) + (players - 1));
+    const maxActive = Math.min(4, 1 + Math.floor(e / 22) + (players - 1));
     const active = holes.filter(h => h.mole && h.mole.type !== 'bomb').length;
     if (active >= maxActive) return;
     const free = holes.map((h, i) => i).filter(i => !holes[i].mole && i !== lastHole);
@@ -554,7 +571,7 @@
     lastHole = i;
     const r = Math.random();
     const type = e > 8 && r < 0.13 ? 'bomb' : r > 0.92 ? 'gold' : 'mole';
-    const stay = Math.max(750, 1700 - e * 15) * (type === 'gold' ? 0.75 : 1);
+    const stay = Math.max(1300, 2600 - e * 12) * (type === 'gold' ? 0.75 : 1);
     holes[i].mole = { type, state: 'up', t0: now, upUntil: now + RISE_MS + stay, spin: Math.random() * 6 };
   }
 
@@ -585,10 +602,11 @@
       const hitters = HITTERS.map((def, k) => {
         const vis = Math.min(...def.idx.map(j => lms[j].visibility ?? 1));
         let x = 0, y = 0;
-        for (const j of def.idx) { const p = toScreen(lms[j].x, lms[j].y); x += p.x / def.idx.length; y += p.y / def.idx.length; }
+        if (def.kind === 'hand') ({ x, y } = handPoint(lms, def));
+        else for (const j of def.idx) { const p = toScreen(lms[j].x, lms[j].y); x += p.x / def.idx.length; y += p.y / def.idx.length; }
         const old = prev && prev.hitters[k];
         const ok = vis > (def.kind === 'hand' ? 0.3 : 0.45);
-        if (old && old.ok && ok) { x = old.x + (x - old.x) * 0.75; y = old.y + (y - old.y) * 0.75; }
+        if (old && old.ok && ok) { x = old.x + (x - old.x) * 0.85; y = old.y + (y - old.y) * 0.85; }
         return { kind: def.kind, x, y, ok, px: old && old.ok ? old.x : x, py: old && old.ok ? old.y : y };
       });
       return { center: centers[i], scale, hitters };
@@ -601,7 +619,7 @@
     const extra = +sensEl.value;
     if (mode === 'pose') {
       for (const p of poses) {
-        const hr = Math.max(14, Math.min(45, p.scale * 0.28)) + extra;
+        const hr = Math.max(14, Math.min(50, p.scale * 0.33)) + extra;
         for (const h of p.hitters) {
           if (!h.ok) continue;
           const lim = tg.r + hr;
@@ -721,7 +739,7 @@
   }
   function drawHitters() {
     for (const p of poses) {
-      const hr = Math.max(14, Math.min(45, p.scale * 0.28)) + +sensEl.value;
+      const hr = Math.max(14, Math.min(50, p.scale * 0.33)) + +sensEl.value;
       for (const h of p.hitters) {
         if (!h.ok) continue;
         const g = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, hr);
@@ -756,7 +774,7 @@
     if (t >= nextSpawnAt) {
       spawnMole(now);
       const e = (now - startedAt) / 1000;
-      nextSpawnAt = t + Math.max(380, 950 - e * 10) * (0.7 + Math.random() * 0.6);
+      nextSpawnAt = t + Math.max(450, 1000 - e * 7) * (0.7 + Math.random() * 0.6);
     }
 
     for (const h of holes) drawHoleBack(h);
