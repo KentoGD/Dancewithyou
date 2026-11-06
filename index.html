@@ -172,8 +172,12 @@
         <label>Dibujos a la vez <select id="opt-count"><option>2</option><option>3</option><option>4</option></select></label>
         <button class="btn-sec small" id="opt-boxreset">↺ Palabra a su tamaño y sitio iniciales</button>
         <label>Velocidad <select id="opt-speed"><option value="0.6">Muy lenta</option><option value="0.85">Lenta</option>
-          <option value="1.1">Normal</option><option value="1.4">Rápida</option></select></label>
+          <option value="1.1">Normal</option><option value="1.4">Rápida</option><option value="1.7">Muy rápida</option></select></label>
+        <label>Dificultad <select id="opt-level"><option value="facil">Fácil</option><option value="media">Media</option>
+          <option value="dificil">Difícil</option></select></label>
       </div>
+      <small style="color:#9aa0b5">Dificultad: cuanto más alta, más dibujos que no son caen antes de que salga el correcto.
+        "Muy rápida" es la velocidad máxima: más deprisa la cámara ya no sigue bien la mano.</small>
     </div>
 
     <button class="btn-start" id="cfg-close">Hecho</button>
@@ -1088,7 +1092,7 @@
   for (const l of LD.lists) for (const w of l.words || []) {
     if (w.img && w.img.kind !== 'photo' && w.img.kind !== 'picto') { w.img = null; w.noPicto = false; }
   }
-  LD.opts = Object.assign({ upper: true, voice: true, readWord: true, count: 3, speed: 0.85 }, LD.opts || {});
+  LD.opts = Object.assign({ upper: true, voice: true, readWord: true, count: 3, speed: 0.85, level: 'facil' }, LD.opts || {});
   function saveLD() {
     try { localStorage.setItem(LEARN_KEY, JSON.stringify(LD)); return true; }
     catch (e) { return false; }   // normalmente: no queda espacio (demasiadas fotos)
@@ -1169,6 +1173,15 @@
   // ---- estado del juego ----
   let learnItems = [], learnTarget = null, learnPhase = 'play', learnWinAt = 0, learnWinItem = null;
   let learnNextSpawn = 0, learnLastWord = '', learnBag = [];
+  // dificultad: cuántos dibujos que no son caen antes de que salga el correcto en cada palabra
+  let learnBefore = 0, learnSpawned = 0, learnCorrectShown = false;
+  function pickBefore() {
+    const r = Math.random();
+    // con pocos dibujos a la vez no se pide más de uno extra, para que la espera no sea eterna
+    if (LD.opts.level === 'dificil') return Math.min(2 + Math.floor(r * 3), LD.opts.count + 1);   // 2 a 4
+    if (LD.opts.level === 'media') return 1 + Math.floor(r * 2);     // 1 o 2
+    return r < 0.5 ? 0 : 1;                                          // fácil: el primero o el segundo
+  }
   let wordBox = { x: 0, y: 0, w: 0, h: 0 }, fallArea = { x0: 0, x1: 0, y0: 0 }, itemS = 120;
 
   // La tarjeta de la palabra se puede mover (arrastrándola) y cambiar de tamaño (esquina de abajo a la derecha)
@@ -1281,8 +1294,11 @@
     // los que quedan en pantalla se van; si alguno ya es el dibujo de la palabra nueva, se queda y vale
     learnItems.forEach(it => {
       it.correct = norm(it.entry.word) === learnLastWord;
-      if (!it.correct || it.scale) it.leaving = true;   // it.scale: el acertado de la ronda anterior
+      // it.scale: el acertado de la ronda anterior; en Media y Difícil también se va el que ya fuera el correcto
+      if (!it.correct || it.scale || LD.opts.level !== 'facil') it.leaving = true;
     });
+    learnBefore = pickBefore(); learnSpawned = 0;
+    learnCorrectShown = learnItems.some(it => it.correct && !it.leaving);
     learnNextSpawn = now + 900;
     setTimeout(() => { if (running && game === 'learn' && learnTarget === pick && LD.opts.readWord) say(pick.word, 'word'); }, 350);
   }
@@ -1292,7 +1308,10 @@
     if (live.length >= LD.opts.count) return;
     const hasCorrect = live.some(it => it.correct);
     let entry, correct = false;
-    if (!hasCorrect && (live.length >= 1 || Math.random() < 0.5)) { entry = learnTarget; correct = true; }
+    // la primera vez espera a que hayan caído los dibujos que toque según la dificultad;
+    // si el correcto ya salió y se escapó por abajo, vuelve pronto como antes
+    const due = learnCorrectShown ? (live.length >= 1 || Math.random() < 0.5) : learnSpawned >= learnBefore;
+    if (!hasCorrect && due) { entry = learnTarget; correct = true; }
     else {
       const onScreen = new Set(live.map(it => norm(it.entry.word)));
       const opts = learnPool().filter(w => norm(w.word) !== norm(learnTarget.word));
@@ -1312,6 +1331,8 @@
     const base = (0.9 + Math.random() * 0.4) * LD.opts.speed * (H / 600);
     learnItems.push({ entry, correct, x, y: fallArea.y0 - (W >= H ? half : -half), vx: (Math.random() - 0.5) * 0.5, vy: base,
       base, rot: 0, wob: 0, t: Math.random() * 6, cool: 0, born: now, alpha: 0, leaving: false });
+    learnSpawned++;
+    if (correct) learnCorrectShown = true;
   }
 
   // ¿qué toca el objeto? devuelve el punto de contacto y la velocidad de la mano
@@ -1574,6 +1595,7 @@
     $('cfg-cancel').style.display = editing ? 'inline-block' : 'none';
     $('opt-upper').checked = !!LD.opts.upper; $('opt-voice').checked = !!LD.opts.voice; $('opt-read').checked = !!LD.opts.readWord;
     $('opt-count').value = String(LD.opts.count); $('opt-speed').value = String(LD.opts.speed);
+    $('opt-level').value = LD.opts.level;
   }
   function startEdit(w) {
     editingId = w.id; $('cfg-word').value = w.word; $('cfg-results').innerHTML = '';
@@ -1663,6 +1685,7 @@
   $('opt-read').addEventListener('change', e => { LD.opts.readWord = e.target.checked; saveLD(); });
   $('opt-count').addEventListener('change', e => { LD.opts.count = +e.target.value; saveLD(); });
   $('opt-speed').addEventListener('change', e => { LD.opts.speed = +e.target.value; saveLD(); });
+  $('opt-level').addEventListener('change', e => { LD.opts.level = e.target.value; saveLD(); });
   $('opt-boxreset').addEventListener('click', () => { delete LD.opts.box; saveLD(); cfgMsg('✔ La palabra vuelve a su tamaño y sitio iniciales.'); });
   fillListSelects();
   // sólo para pruebas automáticas (index.html#debug)
