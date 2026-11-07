@@ -152,7 +152,7 @@
         <input type="text" id="cfg-word" placeholder="Escribe una palabra (p. ej. bicicleta)" autocomplete="off" />
       </div>
       <div class="row">
-        <button class="btn-sec small" id="cfg-search">🔍 Buscar pictograma</button>
+        <button class="btn-sec small" id="cfg-search">🔍 Buscar dibujo</button>
         <button class="btn-sec small" id="cfg-photo-btn">📷 Foto propia</button>
         <button class="btn-sec small" id="cfg-cancel" style="display:none">Cancelar</button>
         <input type="file" id="cfg-photo" accept="image/*" style="display:none" />
@@ -172,13 +172,17 @@
         <label>Dibujos a la vez <select id="opt-count"><option>2</option><option>3</option><option>4</option></select></label>
         <button class="btn-sec small" id="opt-boxreset">↺ Palabra a su tamaño y sitio iniciales</button>
         <label>Velocidad <select id="opt-speed"><option value="0.6">Muy lenta</option><option value="0.85">Lenta</option>
-          <option value="1.1">Normal</option><option value="1.4">Rápida</option></select></label>
+          <option value="1.1">Normal</option><option value="1.4">Rápida</option><option value="1.7">Muy rápida</option></select></label>
+        <label>Dificultad <select id="opt-level"><option value="facil">Fácil</option><option value="media">Media</option>
+          <option value="dificil">Difícil</option></select></label>
       </div>
+      <small style="color:#9aa0b5">Dificultad: cuanto más alta, más dibujos que no son caen antes de que salga el correcto.
+        "Muy rápida" es la velocidad máxima: más deprisa la cámara ya no sigue bien la mano.</small>
     </div>
 
     <button class="btn-start" id="cfg-close">Hecho</button>
-    <div class="tip" style="margin-top:12px">Pictogramas: autor Sergio Palao. Origen: ARASAAC (arasaac.org).
-      Licencia CC BY-NC-SA. Propiedad: Gobierno de Aragón (España). Las palabras y fotos se guardan sólo en este dispositivo.</div>
+    <div class="tip" style="margin-top:12px">Los dibujos son propios, hechos desde cero para este juego (no vienen de ARASAAC ni de otros bancos de pictogramas).
+      Las palabras y fotos se guardan sólo en este dispositivo.</div>
   </div>
 </div>
 
@@ -1004,26 +1008,91 @@
   //  Sin tiempo, sin puntos y sin fallos: lo que no es, rebota.
   // =====================================================================
   const LEARN_KEY = 'lee-atrapa-v1';
-  const ARASAAC_IMG = id => `https://static.arasaac.org/pictograms/${id}/${id}_500.png`;
-  const ARASAAC_SEARCH = [
-    w => `https://api.arasaac.org/v1/pictograms/es/search/${encodeURIComponent(w)}`,
-    w => `https://api.arasaac.org/api/pictograms/es/search/${encodeURIComponent(w)}`
+  // ---- pictogramas propios: dibujados desde cero para este juego (no vienen de ningún banco externo) ----
+  // [nombre, otras formas de decirlo, dibujo SVG en un cuadro de 100x100]
+  const PICTO_DEFS = [
+    ['casa', 'hogar', '<rect x="22" y="45" width="56" height="42" fill="#f6d365"/><path d="M12 50 L50 16 L88 50 Z" fill="#e63946"/><rect x="43" y="62" width="14" height="25" fill="#9c6233"/><rect x="27" y="54" width="11" height="11" fill="#8fd6ff"/><rect x="62" y="54" width="11" height="11" fill="#8fd6ff"/>'],
+    ['perro', 'perrito perra', '<ellipse cx="24" cy="48" rx="10" ry="22" transform="rotate(18 24 48)" fill="#8b5a2b"/><ellipse cx="76" cy="48" rx="10" ry="22" transform="rotate(-18 76 48)" fill="#8b5a2b"/><circle cx="50" cy="52" r="28" fill="#d9a066"/><ellipse cx="50" cy="67" rx="14" ry="11" fill="#f5dcb4"/><circle cx="40" cy="46" r="4" fill="#222"/><circle cx="60" cy="46" r="4" fill="#222"/><ellipse cx="50" cy="61" rx="6" ry="4" fill="#222"/><path d="M50 65 L50 70 M43 71 Q50 76 57 71" fill="none"/>'],
+    ['gato', 'gatito gata', '<path d="M24 46 L24 14 L46 30 Z M76 46 L76 14 L54 30 Z" fill="#f4a742"/><path d="M28 34 L28 22 L38 30 Z M72 34 L72 22 L62 30 Z" fill="#ffb3c6" stroke="none"/><circle cx="50" cy="56" r="29" fill="#f4a742"/><ellipse cx="40" cy="52" rx="4" ry="6" fill="#222"/><ellipse cx="60" cy="52" rx="4" ry="6" fill="#222"/><path d="M46 62 L54 62 L50 66 Z" fill="#ff7aa2"/><path d="M50 66 Q46 72 41 70 M50 66 Q54 72 59 70 M16 60 L34 63 M16 70 L34 68 M84 60 L66 63 M84 70 L66 68" fill="none" stroke-width="2.5"/>'],
+    ['árbol', 'arbol', '<rect x="43" y="56" width="14" height="34" fill="#9c6233"/><circle cx="50" cy="38" r="28" fill="#43b55a"/><circle cx="40" cy="30" r="5" fill="#6fd27f" stroke="none"/>'],
+    ['coche', 'carro auto automóvil', '<path d="M8 68 L8 54 C8 50 11 48 15 48 L27 48 L37 31 C39 29 41 28 44 28 L66 28 C69 28 71 29 73 32 L83 48 L86 48 C90 48 92 51 92 55 L92 68 Z" fill="#e63946"/><path d="M41 34 L50 34 L50 47 L33 47 Z M55 34 L66 34 L74 47 L55 47 Z" fill="#bfe8ff"/><circle cx="28" cy="69" r="10" fill="#333"/><circle cx="28" cy="69" r="4" fill="#ccc"/><circle cx="72" cy="69" r="10" fill="#333"/><circle cx="72" cy="69" r="4" fill="#ccc"/>'],
+    ['sol', '', '<path d="M50 6 L50 18 M50 82 L50 94 M6 50 L18 50 M82 50 L94 50 M19 19 L27 27 M81 19 L73 27 M19 81 L27 73 M81 81 L73 73" stroke="#f5a623" stroke-width="6"/><circle cx="50" cy="50" r="22" fill="#ffd23f"/>'],
+    ['manzana', '', '<path d="M50 30 C32 18 12 30 15 54 C18 78 36 92 50 84 C64 92 82 78 85 54 C88 30 68 18 50 30 Z" fill="#e63946"/><path d="M50 30 L53 13" fill="none" stroke="#6b4226" stroke-width="4"/><path d="M54 22 C61 10 74 10 79 15 C73 24 62 27 54 22 Z" fill="#43b55a"/><path d="M28 46 Q28 38 35 35" fill="none" stroke="#fff" stroke-width="4"/>'],
+    ['pelota', 'balón balon bola', '<circle cx="50" cy="50" r="38" fill="#ffd23f"/><path d="M50 12 C26 28 26 72 50 88 A38 38 0 0 1 50 12 Z" fill="#e63946"/><path d="M50 12 C74 28 74 72 50 88 A38 38 0 0 0 50 12 Z" fill="#3a86ff"/><circle cx="50" cy="50" r="38" fill="none"/>'],
+    ['pez', 'pescado', '<path d="M70 50 L92 30 L92 70 Z" fill="#ff8c42"/><ellipse cx="44" cy="50" rx="30" ry="21" fill="#ff8c42"/><path d="M40 30 Q50 18 60 32" fill="#ffb37a"/><path d="M50 36 Q56 50 50 64 M60 38 Q65 50 60 62" fill="none" stroke="#c9601c"/><circle cx="28" cy="46" r="6" fill="#fff"/><circle cx="27" cy="46" r="3" fill="#222" stroke="none"/>'],
+    ['pájaro', 'pajaro ave pajarito', '<path d="M24 54 L6 44 L10 64 Z" fill="#2a9fd6"/><ellipse cx="46" cy="58" rx="28" ry="21" fill="#4fc3f7"/><circle cx="70" cy="38" r="15" fill="#4fc3f7"/><path d="M83 34 L96 40 L83 46 Z" fill="#ffb703"/><circle cx="73" cy="35" r="3" fill="#222" stroke="none"/><path d="M28 54 Q44 44 56 58 Q42 70 28 54 Z" fill="#2a9fd6"/><path d="M42 78 L40 92 M54 78 L56 92" fill="none" stroke="#e08a00" stroke-width="4"/>'],
+    ['vaca', 'toro', '<path d="M32 26 Q22 14 24 6 Q32 14 40 22 Z M68 26 Q78 14 76 6 Q68 14 60 22 Z" fill="#f5e1a4"/><ellipse cx="18" cy="40" rx="12" ry="6" transform="rotate(-20 18 40)" fill="#fff"/><ellipse cx="82" cy="40" rx="12" ry="6" transform="rotate(20 82 40)" fill="#fff"/><ellipse cx="50" cy="48" rx="26" ry="30" fill="#fff"/><path d="M28 34 C30 24 44 20 48 30 C46 40 32 42 28 34 Z" fill="#333" stroke="none"/><circle cx="40" cy="46" r="4" fill="#222"/><circle cx="60" cy="46" r="4" fill="#222"/><ellipse cx="50" cy="70" rx="21" ry="14" fill="#ffb6c8"/><ellipse cx="43" cy="70" rx="3" ry="4" fill="#222"/><ellipse cx="57" cy="70" rx="3" ry="4" fill="#222"/>'],
+    ['caballo', 'yegua poni', '<path d="M30 92 L34 56 C34 36 40 22 54 16 L57 6 L63 18 C70 22 77 32 85 46 C89 53 88 61 82 63 C76 65 70 60 64 58 L62 92 Z" fill="#b5713b"/><path d="M54 16 C40 22 32 38 32 56 L28 92 L37 92 C38 62 42 38 58 22 Z" fill="#4a2c17"/><circle cx="64" cy="33" r="3.5" fill="#222" stroke="none"/><circle cx="81" cy="55" r="2" fill="#222" stroke="none"/>'],
+    ['agua', 'gota', '<path d="M50 8 C50 8 18 48 18 64 A32 32 0 0 0 82 64 C82 48 50 8 50 8 Z" fill="#4fc3f7"/><path d="M33 62 A17 17 0 0 0 44 78" fill="none" stroke="#fff" stroke-width="5"/>'],
+    ['pan', 'barra', '<path d="M12 64 C12 38 30 30 50 30 C70 30 88 38 88 64 L88 74 C88 78 84 80 80 80 L20 80 C16 80 12 78 12 74 Z" fill="#e0a458"/><path d="M32 42 L38 58 M48 40 L54 58 M64 42 L70 58" fill="none" stroke="#a86b2d" stroke-width="4"/>'],
+    ['leche', 'batido', '<rect x="38" y="12" width="24" height="10" fill="#3a86ff"/><path d="M30 40 L38 22 L62 22 L70 40 Z" fill="#fff"/><rect x="30" y="40" width="40" height="50" fill="#fff"/><rect x="30" y="54" width="40" height="20" fill="#3a86ff"/><path d="M50 58 C50 58 44 65 44 68 A6 6 0 0 0 56 68 C56 65 50 58 50 58 Z" fill="#fff" stroke-width="2"/>'],
+    ['plátano', 'platano banana', '<path d="M18 26 C18 70 54 92 88 70 C90 66 88 61 83 62 C58 72 32 58 30 26 C30 20 18 20 18 26 Z" fill="#ffd23f"/><path d="M18 26 L16 18 L26 18 L30 26" fill="#8b5a2b"/><path d="M30 40 C36 58 52 68 74 68" fill="none" stroke="#e0a800" stroke-width="2.5"/>'],
+    ['galleta', '', '<circle cx="50" cy="50" r="37" fill="#d9a066"/><g fill="#5b3a1e" stroke="none"><circle cx="37" cy="36" r="5"/><circle cx="60" cy="34" r="4"/><circle cx="48" cy="54" r="5"/><circle cx="68" cy="58" r="5"/><circle cx="32" cy="62" r="4"/><circle cx="54" cy="73" r="4"/></g>'],
+    ['huevo', '', '<ellipse cx="50" cy="54" rx="28" ry="36" fill="#fff8e7"/><path d="M34 46 Q36 32 44 26" fill="none" stroke="#e6dcc3" stroke-width="5"/>'],
+    ['luna', '', '<path d="M60 10 A40 40 0 1 0 90 66 A32 32 0 0 1 60 10 Z" fill="#ffe066"/><circle cx="36" cy="62" r="4" fill="#f0c93a" stroke="none"/><circle cx="46" cy="78" r="3" fill="#f0c93a" stroke="none"/>'],
+    ['estrella', '', '<path d="M50 10 L61 37 L90 39 L68 58 L75 87 L50 71 L25 87 L32 58 L10 39 L39 37 Z" fill="#ffd23f"/>'],
+    ['flor', '', '<path d="M50 56 L50 92" stroke="#2e9e44" stroke-width="5"/><path d="M50 78 C40 66 28 68 26 74 C34 82 44 82 50 78 Z" fill="#43b55a"/><g fill="#ff6fa8"><circle cx="50" cy="22" r="12"/><circle cx="66" cy="34" r="12"/><circle cx="60" cy="52" r="12"/><circle cx="40" cy="52" r="12"/><circle cx="34" cy="34" r="12"/></g><circle cx="50" cy="38" r="10" fill="#ffd23f"/>'],
+    ['nube', '', '<path d="M26 74 A16 16 0 0 1 24 42 A22 22 0 0 1 66 34 A18 18 0 0 1 76 74 Z" fill="#e8f4fc"/>'],
+    ['bicicleta', 'bici', '<circle cx="24" cy="64" r="17" fill="none" stroke-width="4"/><circle cx="76" cy="64" r="17" fill="none" stroke-width="4"/><path d="M24 64 L46 64 L40 40 Z M40 40 L66 40 L46 64 M66 40 L76 64" fill="none" stroke="#e63946" stroke-width="5"/><path d="M33 36 L47 36 M62 30 L72 30 M67 30 L66 40" fill="none" stroke-width="4"/>'],
+    ['avión', 'avion', '<path d="M50 6 C55 6 57 12 57 20 L57 40 L92 58 L92 67 L57 57 L57 78 L69 86 L69 93 L50 88 L31 93 L31 86 L43 78 L43 57 L8 67 L8 58 L43 40 L43 20 C43 12 45 6 50 6 Z" fill="#8ecae6"/>'],
+    ['barco', 'barca velero', '<path d="M50 60 L50 12" stroke-width="4"/><path d="M54 16 L54 54 L82 54 Z" fill="#fff"/><path d="M46 24 L46 54 L24 54 Z" fill="#fff"/><path d="M10 60 L90 60 L77 80 L23 80 Z" fill="#9c6233"/><path d="M6 89 q8 -6 16 0 t16 0 t16 0 t16 0 t16 0 t16 0" fill="none" stroke="#3a86ff" stroke-width="4"/>'],
+    ['libro', 'cuento', '<path d="M8 28 L8 84 C24 80 40 80 50 88 C60 80 76 80 92 84 L92 28" fill="#3a86ff"/><path d="M50 26 C40 18 24 18 13 22 L13 77 C26 73 40 74 50 82 Z M50 26 C60 18 76 18 87 22 L87 77 C74 73 60 74 50 82 Z" fill="#fff"/><path d="M21 34 L42 34 M21 44 L42 44 M21 54 L42 54 M58 34 L79 34 M58 44 L79 44 M58 54 L79 54" fill="none" stroke="#aab" stroke-width="2.5"/>'],
+    ['cama', 'dormir', '<rect x="10" y="34" width="9" height="54" rx="2" fill="#9c6233"/><rect x="19" y="56" width="71" height="14" fill="#fff"/><ellipse cx="31" cy="51" rx="10" ry="6" fill="#fff"/><path d="M42 48 L86 48 C88 48 90 50 90 52 L90 70 L42 70 Z" fill="#3a86ff"/><rect x="10" y="70" width="80" height="9" fill="#9c6233"/><path d="M86 79 L86 88" stroke="#9c6233" stroke-width="6"/>'],
+    ['silla', '', '<rect x="26" y="12" width="8" height="78" rx="2" fill="#b5713b"/><rect x="66" y="58" width="8" height="32" rx="2" fill="#b5713b"/><rect x="24" y="52" width="52" height="9" rx="2" fill="#e0a458"/><path d="M34 22 L44 22 M34 34 L44 34" stroke="#b5713b" stroke-width="5"/>'],
+    ['mesa', '', '<rect x="16" y="48" width="8" height="40" rx="2" fill="#b5713b"/><rect x="76" y="48" width="8" height="40" rx="2" fill="#b5713b"/><rect x="8" y="38" width="84" height="11" rx="3" fill="#e0a458"/>'],
+    ['zapato', 'zapatilla', '<path d="M10 74 L10 46 C10 41 14 39 19 42 C27 46 35 46 41 39 L49 47 C59 57 74 57 84 61 C90 63 92 68 92 74 Z" fill="#e63946"/><rect x="8" y="74" width="86" height="9" rx="3" fill="#444"/><path d="M44 46 L38 54 M50 51 L44 58 M56 55 L50 61" fill="none" stroke="#fff" stroke-width="3"/>'],
+    ['camiseta', 'camisa ropa', '<path d="M36 16 L22 20 L6 38 L19 51 L28 44 L28 88 L72 88 L72 44 L81 51 L94 38 L78 20 L64 16 C62 25 56 30 50 30 C44 30 38 25 36 16 Z" fill="#43b55a"/>'],
+    ['corazón', 'corazon amor', '<path d="M50 86 C20 64 10 48 10 34 C10 20 22 12 32 12 C40 12 46 16 50 24 C54 16 60 12 68 12 C78 12 90 20 90 34 C90 48 80 64 50 86 Z" fill="#e63946"/><path d="M22 32 Q24 22 32 21" fill="none" stroke="#fff" stroke-width="4"/>'],
+    ['niño', 'nino chico', '<rect x="38" y="70" width="9" height="22" rx="3" fill="#3a5a98"/><rect x="53" y="70" width="9" height="22" rx="3" fill="#3a5a98"/><path d="M32 46 C32 40 36 38 42 38 L58 38 C64 38 68 40 68 46 L68 72 L32 72 Z" fill="#3a86ff"/><path d="M32 46 L22 64 M68 46 L78 64" fill="none" stroke-width="7"/><path d="M32 46 L22 64 M68 46 L78 64" fill="none" stroke="#f3c9a0" stroke-width="3"/><circle cx="50" cy="22" r="15" fill="#f3c9a0"/><path d="M35 20 C35 8 46 5 52 6 C60 6 66 12 65 20 C58 14 46 14 35 20 Z" fill="#6b4226"/><circle cx="45" cy="23" r="2" fill="#222" stroke="none"/><circle cx="55" cy="23" r="2" fill="#222" stroke="none"/><path d="M45 29 Q50 32 55 29" fill="none" stroke-width="2"/>'],
+    ['niña', 'nina chica', '<path d="M40 78 L40 92 M60 78 L60 92" fill="none" stroke="#f3c9a0" stroke-width="7"/><path d="M38 40 L62 40 L76 80 L24 80 Z" fill="#ff6fa8"/><path d="M38 44 L26 62 M62 44 L74 62" fill="none" stroke="#f3c9a0" stroke-width="6"/><path d="M33 24 C30 40 28 48 34 50 L38 30 Z M67 24 C70 40 72 48 66 50 L62 30 Z" fill="#a0522d"/><circle cx="50" cy="22" r="15" fill="#f3c9a0"/><path d="M35 22 C34 8 46 5 50 6 C58 6 67 10 65 22 C58 14 44 14 35 22 Z" fill="#a0522d"/><circle cx="45" cy="23" r="2" fill="#222" stroke="none"/><circle cx="55" cy="23" r="2" fill="#222" stroke="none"/><path d="M45 29 Q50 32 55 29" fill="none" stroke-width="2"/>'],
+    ['helado', '', '<path d="M32 50 L68 50 L50 94 Z" fill="#e0a458"/><path d="M40 56 L57 72 M54 54 L44 66" fill="none" stroke="#a86b2d" stroke-width="2.5"/><circle cx="50" cy="34" r="20" fill="#ff9ec4"/><circle cx="58" cy="16" r="5" fill="#e63946"/>'],
+    ['uva', 'uvas', '<path d="M50 20 L52 8" stroke="#6b4226" stroke-width="4"/><path d="M52 14 C60 4 74 6 76 10 C70 18 60 18 52 14 Z" fill="#43b55a"/><g fill="#8e44ad"><circle cx="38" cy="30" r="10"/><circle cx="62" cy="30" r="10"/><circle cx="50" cy="32" r="10"/><circle cx="32" cy="48" r="10"/><circle cx="50" cy="48" r="10"/><circle cx="68" cy="48" r="10"/><circle cx="41" cy="64" r="10"/><circle cx="59" cy="64" r="10"/><circle cx="50" cy="80" r="10"/></g>'],
+    ['naranja', '', '<circle cx="50" cy="56" r="34" fill="#ff9f1c"/><path d="M50 22 C56 10 70 10 74 14 C68 22 58 24 50 22 Z" fill="#43b55a"/><g fill="#e07b00" stroke="none"><circle cx="40" cy="50" r="1.8"/><circle cx="58" cy="44" r="1.8"/><circle cx="64" cy="62" r="1.8"/><circle cx="44" cy="70" r="1.8"/></g>'],
+    ['fresa', 'fresas', '<path d="M50 28 C24 22 14 40 22 58 C30 76 42 90 50 90 C58 90 70 76 78 58 C86 40 76 22 50 28 Z" fill="#e63946"/><path d="M50 30 L36 18 L46 22 L50 12 L54 22 L64 18 Z" fill="#43b55a"/><g fill="#ffe066" stroke="none"><circle cx="38" cy="44" r="2"/><circle cx="56" cy="42" r="2"/><circle cx="66" cy="54" r="2"/><circle cx="46" cy="58" r="2"/><circle cx="34" cy="62" r="2"/><circle cx="58" cy="70" r="2"/><circle cx="48" cy="78" r="2"/></g>']
   ];
+  const plain = w => w.trim().toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const PICTOS = new Map();       // nombre -> { key, names, src }
+  for (const [key, alt, body] of PICTO_DEFS) {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="400" height="400" stroke="#222" stroke-width="3" ' +
+      'stroke-linejoin="round" stroke-linecap="round">' + body + '</svg>';
+    PICTOS.set(key, { key, names: [key, ...alt.split(' ').filter(Boolean)].map(plain), src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) });
+  }
+  // dibujo que corresponde exactamente a una palabra (o null)
+  function pictoFor(word) {
+    const w = plain(word);
+    for (const p of PICTOS.values()) if (p.names.includes(w)) return p.key;
+    return null;
+  }
+  // dibujos parecidos a lo escrito (exactos primero)
+  function searchPictos(word) {
+    const w = plain(word);
+    if (!w) return [];
+    const exact = [], near = [];
+    for (const p of PICTOS.values()) {
+      if (p.names.includes(w)) exact.push(p.key);
+      else if (w.length >= 3 && p.names.some(n => n.startsWith(w) || w.startsWith(n))) near.push(p.key);
+    }
+    return exact.concat(near);
+  }
   const uid = () => Math.random().toString(36).slice(2, 10);
-  // listas de inicio: el emoji sólo se usa mientras carga el pictograma o si no hay internet
+  // listas de inicio: el emoji sólo se usa si una palabra no tiene dibujo
   const DEFAULT_LISTS = [
     ['Básico', [['casa', '🏠'], ['perro', '🐶'], ['gato', '🐱'], ['árbol', '🌳'], ['coche', '🚗'], ['sol', '☀️'], ['manzana', '🍎'], ['pelota', '⚽']]],
     ['Animales', [['perro', '🐶'], ['gato', '🐱'], ['pez', '🐟'], ['pájaro', '🐦'], ['vaca', '🐄'], ['caballo', '🐴']]],
     ['Comida', [['agua', '💧'], ['pan', '🍞'], ['leche', '🥛'], ['plátano', '🍌'], ['galleta', '🍪'], ['huevo', '🥚']]]
   ];
   function defaultData() {
-    const lists = DEFAULT_LISTS.map(([name, ws]) => ({ id: uid(), name, words: ws.map(([word, emoji]) => ({ id: uid(), word, emoji, img: null })) }));
+    const lists = DEFAULT_LISTS.map(([name, ws]) => ({ id: uid(), name, words: ws.map(([word, emoji]) => ({ id: uid(), word, emoji, img: pictoFor(word) ? { kind: 'picto', key: pictoFor(word) } : null })) }));
     return { lists, current: lists[0].id, opts: { upper: true, voice: true, readWord: true, count: 3, speed: 0.85 } };
   }
   let LD;
   try { LD = JSON.parse(localStorage.getItem(LEARN_KEY)); } catch (e) {}
   if (!LD || !Array.isArray(LD.lists) || !LD.lists.length) LD = defaultData();
-  LD.opts = Object.assign({ upper: true, voice: true, readWord: true, count: 3, speed: 0.85 }, LD.opts || {});
+  // datos guardados con la versión anterior (pictogramas de ARASAAC): se cambian por los dibujos propios
+  for (const l of LD.lists) for (const w of l.words || []) {
+    if (w.img && w.img.kind !== 'photo' && w.img.kind !== 'picto') { w.img = null; w.noPicto = false; }
+  }
+  LD.opts = Object.assign({ upper: true, voice: true, readWord: true, count: 3, speed: 0.85, level: 'facil' }, LD.opts || {});
   function saveLD() {
     try { localStorage.setItem(LEARN_KEY, JSON.stringify(LD)); return true; }
     catch (e) { return false; }   // normalmente: no queda espacio (demasiadas fotos)
@@ -1036,7 +1105,9 @@
   const imgCache = new Map();
   function imgSrc(entry) {
     if (!entry.img) return null;
-    return entry.img.kind === 'photo' ? entry.img.src : ARASAAC_IMG(entry.img.id);
+    if (entry.img.kind === 'photo') return entry.img.src;
+    const p = entry.img.kind === 'picto' && PICTOS.get(entry.img.key);
+    return p ? p.src : null;
   }
   function getImg(entry) {
     const src = imgSrc(entry);
@@ -1050,28 +1121,14 @@
     }
     return im.complete && im.naturalWidth && !im.failed ? im : null;
   }
-  async function searchArasaac(word) {
-    for (const url of ARASAAC_SEARCH) {
-      try {
-        const r = await fetch(url(word));
-        if (r.status === 404) return [];
-        if (!r.ok) continue;
-        const data = await r.json();
-        return (Array.isArray(data) ? data : []).map(d => d._id).filter(id => id != null);
-      } catch (e) {}
-    }
-    throw new Error('sin conexión');
-  }
-  // las palabras sin imagen toman el primer pictograma de ARASAAC (se puede cambiar en "Mis palabras")
-  async function resolveMissing(list) {
+  // las palabras sin imagen toman su dibujo propio si lo hay (se puede cambiar en "Mis palabras")
+  function resolveMissing(list) {
     let changed = false;
     for (const w of list.words) {
       if (w.img || w.noPicto) continue;
-      try {
-        const ids = await searchArasaac(norm(w.word));
-        if (ids.length) w.img = { kind: 'arasaac', id: ids[0] }; else w.noPicto = true;
-        changed = true;
-      } catch (e) { break; }   // sin internet: se queda con el emoji
+      const key = pictoFor(w.word);
+      if (key) w.img = { kind: 'picto', key }; else w.noPicto = true;   // sin dibujo: se queda con el emoji
+      changed = true;
     }
     if (changed) { saveLD(); if ($('cfg').style.display !== 'none') renderCfg(); }
   }
@@ -1116,6 +1173,15 @@
   // ---- estado del juego ----
   let learnItems = [], learnTarget = null, learnPhase = 'play', learnWinAt = 0, learnWinItem = null;
   let learnNextSpawn = 0, learnLastWord = '', learnBag = [];
+  // dificultad: cuántos dibujos que no son caen antes de que salga el correcto en cada palabra
+  let learnBefore = 0, learnSpawned = 0, learnCorrectShown = false;
+  function pickBefore() {
+    const r = Math.random();
+    // con pocos dibujos a la vez no se pide más de uno extra, para que la espera no sea eterna
+    if (LD.opts.level === 'dificil') return Math.min(2 + Math.floor(r * 3), LD.opts.count + 1);   // 2 a 4
+    if (LD.opts.level === 'media') return 1 + Math.floor(r * 2);     // 1 o 2
+    return r < 0.5 ? 0 : 1;                                          // fácil: el primero o el segundo
+  }
   let wordBox = { x: 0, y: 0, w: 0, h: 0 }, fallArea = { x0: 0, x1: 0, y0: 0 }, itemS = 120;
 
   // La tarjeta de la palabra se puede mover (arrastrándola) y cambiar de tamaño (esquina de abajo a la derecha)
@@ -1203,7 +1269,7 @@
     const own = curList().words.filter(w => w.word.trim());
     if (own.length >= 3) return own;
     // lista con muy pocas palabras: se completan las distracciones con la lista básica
-    const extra = DEFAULT_LISTS[0][1].map(([word, emoji]) => ({ id: 'd-' + word, word, emoji, img: null }));
+    const extra = DEFAULT_LISTS[0][1].map(([word, emoji]) => ({ id: 'd-' + word, word, emoji, img: pictoFor(word) ? { kind: 'picto', key: pictoFor(word) } : null }));
     const seen = new Set(own.map(w => norm(w.word)));
     return own.concat(extra.filter(w => !seen.has(norm(w.word))));
   }
@@ -1228,8 +1294,11 @@
     // los que quedan en pantalla se van; si alguno ya es el dibujo de la palabra nueva, se queda y vale
     learnItems.forEach(it => {
       it.correct = norm(it.entry.word) === learnLastWord;
-      if (!it.correct || it.scale) it.leaving = true;   // it.scale: el acertado de la ronda anterior
+      // it.scale: el acertado de la ronda anterior; en Media y Difícil también se va el que ya fuera el correcto
+      if (!it.correct || it.scale || LD.opts.level !== 'facil') it.leaving = true;
     });
+    learnBefore = pickBefore(); learnSpawned = 0;
+    learnCorrectShown = learnItems.some(it => it.correct && !it.leaving);
     learnNextSpawn = now + 900;
     setTimeout(() => { if (running && game === 'learn' && learnTarget === pick && LD.opts.readWord) say(pick.word, 'word'); }, 350);
   }
@@ -1239,7 +1308,10 @@
     if (live.length >= LD.opts.count) return;
     const hasCorrect = live.some(it => it.correct);
     let entry, correct = false;
-    if (!hasCorrect && (live.length >= 1 || Math.random() < 0.5)) { entry = learnTarget; correct = true; }
+    // la primera vez espera a que hayan caído los dibujos que toque según la dificultad;
+    // si el correcto ya salió y se escapó por abajo, vuelve pronto como antes
+    const due = learnCorrectShown ? (live.length >= 1 || Math.random() < 0.5) : learnSpawned >= learnBefore;
+    if (!hasCorrect && due) { entry = learnTarget; correct = true; }
     else {
       const onScreen = new Set(live.map(it => norm(it.entry.word)));
       const opts = learnPool().filter(w => norm(w.word) !== norm(learnTarget.word));
@@ -1259,6 +1331,8 @@
     const base = (0.9 + Math.random() * 0.4) * LD.opts.speed * (H / 600);
     learnItems.push({ entry, correct, x, y: fallArea.y0 - (W >= H ? half : -half), vx: (Math.random() - 0.5) * 0.5, vy: base,
       base, rot: 0, wob: 0, t: Math.random() * 6, cool: 0, born: now, alpha: 0, leaving: false });
+    learnSpawned++;
+    if (correct) learnCorrectShown = true;
   }
 
   // ¿qué toca el objeto? devuelve el punto de contacto y la velocidad de la mano
@@ -1521,10 +1595,11 @@
     $('cfg-cancel').style.display = editing ? 'inline-block' : 'none';
     $('opt-upper').checked = !!LD.opts.upper; $('opt-voice').checked = !!LD.opts.voice; $('opt-read').checked = !!LD.opts.readWord;
     $('opt-count').value = String(LD.opts.count); $('opt-speed').value = String(LD.opts.speed);
+    $('opt-level').value = LD.opts.level;
   }
   function startEdit(w) {
     editingId = w.id; $('cfg-word').value = w.word; $('cfg-results').innerHTML = '';
-    cfgMsg('Busca otro pictograma o pon una foto.');
+    cfgMsg('Elige otro dibujo o pon una foto.');
     renderCfg();
     $('cfg-addtitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -1571,17 +1646,17 @@
   });
   $('cfg-cancel').addEventListener('click', () => { stopEdit(); renderCfg(); });
 
-  async function doSearch() {
+  function doSearch() {
     const word = $('cfg-word').value.trim();
     if (!word) { cfgMsg('Escribe primero la palabra.'); return; }
     const box = $('cfg-results'); box.innerHTML = '';
-    cfgMsg('Buscando en ARASAAC…');
-    let ids;
-    try { ids = await searchArasaac(norm(word)); }
-    catch (e) { cfgMsg('No se pudo conectar con ARASAAC (¿hay internet?). Puedes usar una foto propia.'); return; }
-    if (!ids.length) { cfgMsg(`No hay pictogramas para "${word}". Prueba otra palabra o usa una foto.`); return; }
-    cfgMsg('Elige el pictograma:');
-    for (const id of ids.slice(0, 24)) box.appendChild(tileFor({ id: 'r' + id, img: { kind: 'arasaac', id } }, () => commitWord({ kind: 'arasaac', id })));
+    let keys = searchPictos(word);
+    if (keys.length) cfgMsg('Elige el dibujo:');
+    else {
+      keys = [...PICTOS.keys()];
+      cfgMsg(`No hay un dibujo para "${word}". Elige uno de estos o usa una foto propia.`);
+    }
+    for (const key of keys) box.appendChild(tileFor({ id: 'r' + key, word: key, img: { kind: 'picto', key } }, () => commitWord({ kind: 'picto', key })));
   }
   $('cfg-search').addEventListener('click', doSearch);
   $('cfg-word').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
@@ -1610,6 +1685,7 @@
   $('opt-read').addEventListener('change', e => { LD.opts.readWord = e.target.checked; saveLD(); });
   $('opt-count').addEventListener('change', e => { LD.opts.count = +e.target.value; saveLD(); });
   $('opt-speed').addEventListener('change', e => { LD.opts.speed = +e.target.value; saveLD(); });
+  $('opt-level').addEventListener('change', e => { LD.opts.level = e.target.value; saveLD(); });
   $('opt-boxreset').addEventListener('click', () => { delete LD.opts.box; saveLD(); cfgMsg('✔ La palabra vuelve a su tamaño y sitio iniciales.'); });
   fillListSelects();
   // sólo para pruebas automáticas (index.html#debug)
