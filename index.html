@@ -73,6 +73,66 @@
   .wtile .del { position: absolute; top: -8px; right: -8px; width: 26px; height: 26px; border-radius: 13px; border: 0;
     background: #ff4d6d; color: #fff; font-weight: bold; cursor: pointer; }
   #cfg-msg { color: #ffd54a; font-size: .9rem; min-height: 1.2em; margin-top: 6px; }
+
+  .cam-badge { position: absolute; left: 12px; bottom: 14px; z-index: 10; pointer-events: none;
+    background: rgba(0,0,0,.6); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 14px; padding: 5px 10px; font-size: .72rem; color: #cfd3e0; display: none; align-items: center; gap: 6px; }
+  .cam-badge.on { display: flex; }
+  .cam-badge i { width: 8px; height: 8px; border-radius: 50%; background: #00ffcc; box-shadow: 0 0 6px #00ffcc; }
+
+  /* ---------- portada ---------- */
+  #start { background: radial-gradient(circle at 15% 10%, rgba(0,255,204,.14), transparent 45%),
+    radial-gradient(circle at 90% 90%, rgba(121,40,202,.22), transparent 50%), rgba(13,14,21,.96); padding: 20px 16px; }
+  .cover { width: 100%; max-width: 1000px; display: grid; gap: 14px; }
+  .cover-head h1 { line-height: 1.1; margin-bottom: 4px; background-clip: text; }
+  .cover-head p { color: #9aa0b5; font-size: .95rem; margin: 0 auto; }
+  #start #result { margin: 0; }
+  .games { display: grid; gap: 12px; grid-template-columns: 1fr; }
+  .panel { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 22px; padding: 14px; }
+  .gcard { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .gcard .art { font-size: 2.4rem; line-height: 1; filter: drop-shadow(0 4px 14px rgba(0,255,204,.35)); }
+  .gcard h2 { font-size: 1.2rem; }
+  .gcard .desc { color: #9aa0b5; font-size: .85rem; line-height: 1.35; }
+  .rules { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .rule { background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); border-radius: 12px;
+    padding: 4px 9px; font-size: .78rem; color: #d6d9e4; }
+  .rule b { color: #00ffcc; } .rule.warn b { color: #ffaa3c; }
+  .gcard .row { margin: 0; }
+  .gcard .btn-start { width: 100%; max-width: 260px; margin-top: auto; }
+  .gcard .play-row { width: 100%; display: flex; gap: 8px; justify-content: center; margin-top: auto; }
+  .gcard .play-row .btn-start { margin: 0; flex: 1; }
+  .btn-start:active, .opt:active { transform: scale(.97); }
+  #start #msg { margin: 0 auto; }
+  #msg:empty { display: none; }
+  .bottom-panels { display: grid; gap: 12px; grid-template-columns: 1fr; text-align: left; }
+  .panel h3 { font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: #8a8fa3; margin-bottom: 10px; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .opt { border: 1px solid rgba(255,255,255,.2); background: rgba(0,0,0,.35); color: #fff; border-radius: 16px;
+    padding: 11px 8px; font-weight: bold; font-size: .9rem; cursor: pointer; }
+  .opt.on { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,.08); }
+  .opt-range { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; font-size: .88rem;
+    background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.2); border-radius: 16px; padding: 9px 12px; }
+  .opt-range input { flex: 1; accent-color: #00ffcc; }
+  #start .tip { margin-top: 10px; max-width: none; font-size: .8rem; }
+  .privacy { border-color: rgba(0,255,204,.45); background: rgba(0,255,204,.06); }
+  .privacy h3 { color: #00ffcc; }
+  #start .privacy p { font-size: .86rem; color: #d6d9e4; line-height: 1.5; margin: 0; max-width: none; text-align: left; }
+  .privacy strong { color: #fff; }
+  #start #version { margin-top: 0; }
+
+  @media (min-width: 760px) {
+    .games { grid-template-columns: repeat(3, 1fr); }
+    .bottom-panels { grid-template-columns: 1fr 1fr; }
+  }
+  @media (orientation: landscape) and (max-height: 520px) {
+    #start { padding: 10px 14px; }
+    .cover { gap: 10px; }
+    .cover-head h1 { font-size: 1.5rem; } .cover-head p { display: none; }
+    .games { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .bottom-panels { grid-template-columns: 1fr 1fr; }
+    .panel { padding: 10px; } .gcard .art { font-size: 1.8rem; } .gcard .desc { display: none; }
+    #start .privacy p { font-size: .78rem; }
+  }
 </style>
 </head>
 <body>
@@ -93,42 +153,76 @@
     </div>
   </div>
 
+  <div class="cam-badge" id="cam-badge"><i></i>Cámara activa · no graba</div>
+
   <div class="overlay" id="start">
-    <h1>Juegos de Movimiento</h1>
-    <div id="result"></div>
+    <div class="cover">
+      <header class="cover-head">
+        <h1>Juegos de Movimiento</h1>
+        <p>Elige un juego y muévete delante de la cámara</p>
+      </header>
+      <div id="result"></div>
+      <div id="msg"></div>
 
-    <div class="game-card">
-      <h2>🖐 Rompe Muñecos</h2>
-      <small>Mano abierta: rompes los muñecos que caen. Puño cerrado: ¡rebotan!</small>
-      <button class="btn-start" data-game="dolls">Jugar</button>
-    </div>
+      <div class="games">
+        <section class="panel gcard">
+          <div class="art">🖐💥</div>
+          <h2>Rompe Muñecos</h2>
+          <div class="rules">
+            <span class="rule"><b>🖐 Mano abierta</b> rompe</span>
+            <span class="rule warn"><b>✊ Puño</b> rebota</span>
+          </div>
+          <div class="desc">Rompe los muñecos que caen. ¡Encadena golpes para hacer combos!</div>
+          <button class="btn-start" data-game="dolls">▶ Jugar</button>
+        </section>
 
-    <div class="game-card">
-      <h2>🔨 Machaca Topos</h2>
-      <small>Salen topos por los bordes de la pantalla: machácalos con las manos (los de abajo, también con los pies).
-        Los dorados valen más y los del casco necesitan 2 golpes. ¡Ojo con las bombas! 90 segundos, 3 vidas. Se puede jugar de 2.
-        Ponte a 2–3 m para que se te vea entero.</small>
-      <button class="btn-start" data-game="moles">Jugar</button>
-    </div>
+        <section class="panel gcard">
+          <div class="art">🔨🐹</div>
+          <h2>Machaca Topos</h2>
+          <div class="rules">
+            <span class="rule"><b>⏱ 90 s</b> · 3 vidas</span>
+            <span class="rule"><b>👥</b> 1 o 2 jugadores</span>
+          </div>
+          <div class="desc">Machaca los topos de los bordes con manos (y pies abajo). Dorados valen más, con casco 2 golpes.
+            ¡Ojo con las bombas! Ponte a 2–3 m.</div>
+          <button class="btn-start" data-game="moles">▶ Jugar</button>
+        </section>
 
-    <div class="game-card">
-      <h2>📖 Lee y Atrapa</h2>
-      <small>Aparece una palabra y caen dibujos: toca con la mano (o con el dedo en la pantalla) el que corresponde.
-        Los demás rebotan. Sin tiempo ni puntos.</small>
-      <div class="row"><span>Lista:</span> <select id="learn-list"></select></div>
-      <div class="row">
-        <button class="btn-start" data-game="learn">Jugar</button>
-        <button class="btn-sec" id="btn-cfg">⚙ Mis palabras</button>
+        <section class="panel gcard">
+          <div class="art">📖✋</div>
+          <h2>Lee y Atrapa</h2>
+          <div class="row"><span>Lista:</span> <select id="learn-list"></select></div>
+          <div class="desc">Lee la palabra y toca el dibujo que corresponde. Sin tiempo ni puntos.</div>
+          <div class="play-row">
+            <button class="btn-start" data-game="learn">▶ Jugar</button>
+            <button class="btn-sec" id="btn-cfg" title="Mis palabras">⚙ Palabras</button>
+          </div>
+        </section>
       </div>
+
+      <div class="bottom-panels">
+        <section class="panel">
+          <h3>Opciones</h3>
+          <div class="opts">
+            <button class="opt" id="opt-fs">⛶ Pantalla completa</button>
+            <button class="opt on" id="opt-sound">🔊 Sonido</button>
+            <label class="opt-range"><span>Sensibilidad</span>
+              <input type="range" id="sens" min="0" max="40" value="14" />
+            </label>
+          </div>
+          <div class="tip">Consejo: buena luz y el cuerpo (o la mano) bien visible delante de la cámara.</div>
+        </section>
+
+        <section class="panel privacy" role="note" aria-label="Aviso de privacidad">
+          <h3>🔒 Aviso de privacidad</h3>
+          <p>La cámara <strong>NO GRABA NADA</strong>. La imagen se analiza en tiempo real únicamente en este
+            dispositivo para detectar la posición de las manos y del cuerpo; no se guarda, no se graba ni se envía a ningún servidor.
+            La cámara se apaga automáticamente al terminar la partida, al volver al menú o al salir de la página.</p>
+        </section>
+      </div>
+
+      <div id="version"></div>
     </div>
-
-    <label class="sens"><span>Sensibilidad</span>
-      <input type="range" id="sens" min="0" max="40" value="14" />
-    </label>
-
-    <div class="tip">Buena luz y el cuerpo (o la mano) bien visible delante de la cámara.</div>
-    <div id="msg"></div>
-    <div id="version"></div>
   </div>
 
   <div class="overlay" id="cfg" style="display:none">
@@ -189,7 +283,7 @@
 <script>
 (() => {
   // súbela en cada cambio para saber qué versión está cargada en el móvil
-  const APP_VERSION = '2.0', APP_DATE = '2 nov 2026';
+  const APP_VERSION = '2.1', APP_DATE = '18 nov 2026';
   const MP_VERSION = '0.10.14';
   const MP_JS = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/+esm`;
   const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -222,8 +316,9 @@
 
   // ---------- audio ----------
   let audioCtx = null;
+  let soundOn = true;
   function pop(freq = 300) {
-    if (!audioCtx) return;
+    if (!audioCtx || !soundOn) return;
     const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime;
     o.type = 'sine';
     o.frequency.setValueAtTime(freq, t);
@@ -272,7 +367,7 @@
     }
   }
   function musicStart() {
-    if (!audioCtx) return;
+    if (!audioCtx || !soundOn) return;
     musicStop();
     if (!music.noise) {
       const len = audioCtx.sampleRate * 0.5, buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate), d = buf.getChannelData(0);
@@ -313,9 +408,10 @@
   window.addEventListener('resize', resize);
 
   // ---------- pantalla completa ----------
-  $('btn-fs').addEventListener('click', () => {
+  const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  function toggleFullscreen() {
     const el = $('app');
-    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    if (!isFs()) {
       try {
         const r = (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
         if (r && r.then) r.then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} }).catch(() => {});
@@ -323,9 +419,32 @@
     } else {
       (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document);
     }
-  });
-  document.addEventListener('fullscreenchange', resize);
-  document.addEventListener('webkitfullscreenchange', resize);
+  }
+  function onFsChange() {
+    resize();
+    $('opt-fs').classList.toggle('on', isFs());
+    $('opt-fs').textContent = isFs() ? '⛶ Salir de pant. completa' : '⛶ Pantalla completa';
+  }
+  $('btn-fs').addEventListener('click', toggleFullscreen);
+  $('opt-fs').addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
+
+  // ---------- opciones de la portada (se recuerdan en este navegador si se puede) ----------
+  const store = {
+    get(k) { try { return localStorage.getItem('dwm.' + k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem('dwm.' + k, v); } catch (e) {} }
+  };
+  sensEl.addEventListener('input', () => store.set('sens', sensEl.value));
+  if (store.get('sens') !== null) sensEl.value = store.get('sens');
+  function setSound(on) {
+    soundOn = on;
+    $('opt-sound').classList.toggle('on', on);
+    $('opt-sound').textContent = on ? '🔊 Sonido' : '🔇 Sin sonido';
+    store.set('sound', on ? '1' : '0');
+  }
+  $('opt-sound').addEventListener('click', () => setSound(!soundOn));
+  setSound(store.get('sound') !== '0');
 
   // ---------- menú / arranque ----------
   document.querySelectorAll('.btn-start[data-game]').forEach(b => b.addEventListener('click', () => startGame(b.dataset.game)));
@@ -337,18 +456,37 @@
     try { speechSynthesis.cancel(); } catch (e) {}
     learnItems = []; boxDrag = null;
     dolls = []; particles = []; popups = []; hands = []; prevHands = []; holes = []; poses = [];
+    pointers.clear();
+    stopCamera();
+    ctx.clearRect(0, 0, W, H);
     $('start').style.display = 'flex';
     document.querySelectorAll('.btn-start[data-game]').forEach(b => b.disabled = false);
   }
 
+  // apaga la cámara de verdad: para cada pista para que se apague el piloto del dispositivo
+  function stopCamera() {
+    const s = video.srcObject;
+    if (s) s.getTracks().forEach(t => t.stop());
+    video.pause();
+    video.srcObject = null;
+    lastVideoTime = -1;
+    $('cam-badge').classList.remove('on');
+  }
+
+  // si se cambia de pestaña, se bloquea el móvil o se cierra la página: al menú y cámara apagada
+  document.addEventListener('visibilitychange', () => { if (document.hidden && (running || video.srcObject)) showMenu(); });
+  window.addEventListener('pagehide', stopCamera);
+
   async function ensureCamera() {
     if (video.srcObject && video.readyState >= 2) return;
+    stopCamera();
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
       audio: false
     });
     video.srcObject = stream;
     await video.play();
+    $('cam-badge').classList.add('on');
   }
 
   async function loadMP() {
@@ -391,6 +529,7 @@
     statusEl.textContent = camOk ? 'Cargando detector…' : 'Sin cámara: toca la pantalla';
     $('scorepill').style.display = game === 'learn' ? 'none' : 'inline-block';
     resize();
+    const token = loopId;   // si se vuelve al menú mientras carga, showMenu() lo cambia y no se arranca
 
     if (!camOk) mode = 'touch';
     else try {
@@ -408,6 +547,7 @@
       console.warn('No se pudo cargar el detector', err);
       mode = 'motion';
     }
+    if (token !== loopId || (camOk && !video.srcObject)) return;
 
     // reinicio de estado
     score = 0; combo = 0; scoreEl.textContent = 0; comboEl.style.display = 'none';
@@ -951,6 +1091,7 @@
     r.innerHTML = `${lives <= 0 ? '💥 ¡Sin vidas!' : '⏱ ¡Tiempo!'} ${score} puntos` + (best ? `<br><small>Récord: ${best}</small>` : '');
     r.style.display = 'block';
     holes = []; poses = [];
+    stopCamera();
     $('start').style.display = 'flex';
     document.querySelectorAll('.btn-start[data-game]').forEach(b => b.disabled = false);
   }
